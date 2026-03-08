@@ -37,22 +37,31 @@ export const AdminDashboard: React.FC = () => {
     const [students, setStudents] = useState<StudentPerf[]>([]);
     const [loading, setLoading] = useState(true);
     const [perfLoading, setPerfLoading] = useState(true);
-    const [activeTab, setActiveTab] = useState<'overview' | 'students'>('overview');
+    const [activeTab, setActiveTab] = useState<'overview' | 'students' | 'market'>('overview');
     const [searchQuery, setSearchQuery] = useState('');
     const [expandedStudent, setExpandedStudent] = useState<string | null>(null);
+    const [marketTrends, setMarketTrends] = useState<{ top_roles: any[], top_domains: any[], total_searches: number } | null>(null);
+    const [historicalOverview, setHistoricalOverview] = useState<{ top_historical_domains: any[], top_historical_roles: any[], overall_trend: any[] } | null>(null);
+    const [riskOverview, setRiskOverview] = useState<{ top_risk_industries: any[], top_risk_roles: any[], total_fraud_cases: number } | null>(null);
 
     useEffect(() => {
         const fetchAll = async () => {
             try {
-                const [analyticsRes, perfRes] = await Promise.all([
+                const [analyticsRes, perfRes, marketRes, histRes, riskRes] = await Promise.all([
                     fetch('http://127.0.0.1:8000/admin/analytics'),
-                    fetch('http://127.0.0.1:8000/admin/student-performance')
+                    fetch('http://127.0.0.1:8000/admin/student-performance'),
+                    fetch('http://127.0.0.1:8000/admin/market-insights'),
+                    fetch('http://127.0.0.1:8000/admin/historical-market-overview'),
+                    fetch('http://127.0.0.1:8000/admin/risk-overview')
                 ]);
                 if (analyticsRes.ok) setData(await analyticsRes.json());
                 if (perfRes.ok) {
                     const perfData = await perfRes.json();
                     setStudents(perfData.students || []);
                 }
+                if (marketRes.ok) setMarketTrends(await marketRes.json());
+                if (histRes.ok) setHistoricalOverview(await histRes.json());
+                if (riskRes.ok) setRiskOverview(await riskRes.json());
             } catch (error) {
                 console.error('Failed to fetch analytics', error);
             } finally {
@@ -127,15 +136,15 @@ export const AdminDashboard: React.FC = () => {
             </div>
 
             {/* Tab Navigation */}
-            <div className="flex gap-sm" style={{ marginBottom: '1.5rem' }}>
-                {(['overview', 'students'] as const).map(tab => (
+            <div className="flex gap-md" style={{ background: 'var(--glass-bg)', padding: '0.4rem', borderRadius: '12px', border: '1px solid var(--glass-border)', marginBottom: '1.5rem' }}>
+                {(['overview', 'students', 'market'] as const).map(tab => (
                     <button
                         key={tab}
                         onClick={() => setActiveTab(tab)}
                         className={activeTab === tab ? 'btn btn-primary' : 'btn btn-secondary'}
-                        style={{ fontSize: '0.85rem', padding: '0.55rem 1.4rem', fontWeight: 700 }}
+                        style={{ padding: '0.6rem 1.5rem', fontSize: '0.85rem', textTransform: 'uppercase', letterSpacing: '1px', fontWeight: 800 }}
                     >
-                        {tab === 'overview' ? '📊 Platform Overview' : `👥 Student Performance (${students.length})`}
+                        {tab === 'overview' ? '📊 System Overview' : tab === 'students' ? '🎓 Student Performance' : '🌍 Market Insights'}
                     </button>
                 ))}
             </div>
@@ -240,6 +249,133 @@ export const AdminDashboard: React.FC = () => {
                             ))}
                         </div>
                     </div>
+                </div>
+            )}
+
+            {/* MARKET INSIGHTS TAB */}
+            {activeTab === 'market' && marketTrends && (
+                <div className="flex-col gap-lg fade-in">
+                    <div className="grid grid-cols-2 gap-lg admin-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem' }}>
+                        <div className="glass-card" style={{ padding: '2rem' }}>
+                            <h3 style={{ fontSize: '1.1rem', fontWeight: 900, marginBottom: '2rem', color: 'var(--primary-500)' }}>
+                                🔥 Trending Career Paths (Top Roles)
+                            </h3>
+                            <div className="flex-col gap-lg">
+                                {marketTrends.top_roles.map((role, i) => (
+                                    <div key={role.name} className="flex-col gap-xs">
+                                        <div className="flex justify-between" style={{ fontSize: '0.9rem', fontWeight: 800 }}>
+                                            <span>{i + 1}. {role.name}</span>
+                                            <span style={{ color: 'var(--text-muted)' }}>{role.count} searches</span>
+                                        </div>
+                                        <div style={{ height: '8px', background: 'var(--glass-border)', borderRadius: '4px', overflow: 'hidden' }}>
+                                            <div style={{ height: '100%', width: `${(role.count / (marketTrends.total_searches || 1)) * 100}%`, background: 'var(--primary-500)', transition: 'width 1s ease' }} />
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+
+                        <div className="glass-card" style={{ padding: '2rem' }}>
+                            <h3 style={{ fontSize: '1.1rem', fontWeight: 900, marginBottom: '2rem', color: 'var(--accent-teal)' }}>
+                                🎯 Emerging Skill Domains
+                            </h3>
+                            <div className="flex-col gap-lg">
+                                {marketTrends.top_domains.map((domain, i) => (
+                                    <div key={domain.name} className="flex-col gap-xs">
+                                        <div className="flex justify-between" style={{ fontSize: '0.9rem', fontWeight: 800 }}>
+                                            <span>{i + 1}. {domain.name}</span>
+                                            <span style={{ color: 'var(--text-muted)' }}>{domain.count} searches</span>
+                                        </div>
+                                        <div style={{ height: '8px', background: 'var(--glass-border)', borderRadius: '4px', overflow: 'hidden' }}>
+                                            <div style={{ height: '100%', width: `${(domain.count / (marketTrends.total_searches || 1)) * 100}%`, background: 'var(--accent-teal)', transition: 'width 1s ease' }} />
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    </div>
+                    <div className="glass-card" style={{ padding: '1.5rem', textAlign: 'center', background: 'rgba(52,160,90,0.03)', border: '1px solid rgba(52,160,90,0.2)' }}>
+                        <p style={{ fontSize: '0.9rem', color: 'var(--text-secondary)' }}>
+                            📊 Total Market Intelligence searches across platform: <strong>{marketTrends.total_searches}</strong> unique student interactions recorded.
+                        </p>
+                    </div>
+
+                    {historicalOverview && (
+                        <div className="glass-card fade-in" style={{ padding: '2rem', marginTop: '1rem', borderTop: '4px solid var(--accent-teal)' }}>
+                            <h3 style={{ fontSize: '1.25rem', fontWeight: 900, marginBottom: '2rem', display: 'flex', alignItems: 'center', gap: 'sm' }}>
+                                📜 Long-term Market Analysis (2021-2025 Archive)
+                            </h3>
+                            <div className="grid grid-cols-2 gap-lg" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '2rem' }}>
+                                <div className="flex-col gap-lg">
+                                    <h4 style={{ fontSize: '0.85rem', fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Historical Volume by Year</h4>
+                                    <div className="flex gap-md" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', height: '150px', background: 'rgba(52,160,90,0.02)', padding: '1rem', borderRadius: '12px' }}>
+                                        {historicalOverview.overall_trend.map(item => {
+                                            const max = Math.max(...historicalOverview.overall_trend.map(t => t.count), 1);
+                                            const h = (item.count / max) * 100;
+                                            return (
+                                                <div key={item.year} className="flex-col items-center gap-xs" style={{ flex: 1, height: '100%', justifyContent: 'flex-end' }}>
+                                                    <div 
+                                                        style={{ 
+                                                            width: '100%', 
+                                                            height: `${h}%`, 
+                                                            background: 'linear-gradient(180deg, var(--accent-teal) 0%, rgba(6,182,212,0.4) 100%)', 
+                                                            borderRadius: '4px 4px 0 0', 
+                                                            minHeight: item.count > 0 ? '4px' : '0',
+                                                            transition: 'height 1s ease-out'
+                                                        }} 
+                                                    />
+                                                    <span style={{ fontSize: '0.7rem', fontWeight: 800 }}>{item.year}</span>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+                                <div className="flex-col gap-lg">
+                                    <h4 style={{ fontSize: '0.85rem', fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Historical Domain Dominance</h4>
+                                    <div className="flex-col gap-sm">
+                                        {historicalOverview.top_historical_domains.slice(0, 5).map(d => (
+                                            <div key={d.name} className="flex justify-between items-center" style={{ padding: '0.5rem 1rem', background: 'var(--glass-bg)', borderRadius: '8px' }}>
+                                                <span style={{ fontSize: '0.85rem', fontWeight: 700 }}>{d.name}</span>
+                                                <span className="badge" style={{ fontSize: '0.7rem' }}>{d.count} archives</span>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {riskOverview && (
+                        <div className="glass-card fade-in" style={{ padding: '2rem', marginTop: '1rem', borderTop: '4px solid var(--accent-red)' }}>
+                            <h3 style={{ fontSize: '1.25rem', fontWeight: 900, marginBottom: '2rem', display: 'flex', alignItems: 'center', gap: 'sm', color: 'var(--accent-red)' }}>
+                                🛡️ Recruitment Risk Intelligence (Fraud Dataset)
+                            </h3>
+                            <div className="grid grid-cols-2 gap-lg" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '2rem' }}>
+                                <div className="flex-col gap-lg">
+                                    <h4 style={{ fontSize: '0.85rem', fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase' }}>High Risk Industries</h4>
+                                    <div className="flex-col gap-sm">
+                                        {riskOverview.top_risk_industries.map(ind => (
+                                            <div key={ind.name} className="flex justify-between items-center" style={{ padding: '0.6rem 1rem', background: 'rgba(239,68,68,0.05)', borderRadius: '8px', border: '1px solid rgba(239,68,68,0.1)' }}>
+                                                <span style={{ fontSize: '0.85rem', fontWeight: 700 }}>{ind.name}</span>
+                                                <span className="badge" style={{ fontSize: '0.7rem', background: 'var(--accent-red)', color: 'white', border: 'none' }}>{ind.count} flags</span>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                                <div className="flex-col gap-lg">
+                                    <h4 style={{ fontSize: '0.85rem', fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Fraud-Prone Job Titles</h4>
+                                    <div className="flex flex-wrap gap-xs">
+                                        {riskOverview.top_risk_roles.map(role => (
+                                            <span key={role.name} className="badge" style={{ fontSize: '0.7rem', borderColor: 'var(--accent-red)', color: 'var(--accent-red)' }}>{role.name} ({role.count})</span>
+                                        ))}
+                                    </div>
+                                    <p style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: 'auto' }}>
+                                        Total of <strong>{riskOverview.total_fraud_cases}</strong> historical recruitment fraud cases analyzed for ecosystem safety.
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+                    )}
                 </div>
             )}
 

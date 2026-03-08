@@ -1,39 +1,39 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Space+Grotesk:wght@400;500;600;700&display=swap');
 
 :root {
-  /* ── Green Palette ── */
-  --primary-600: hsl(145, 70%, 32%);
-  --primary-500: hsl(150, 65%, 40%);
-  --primary-400: hsl(155, 60%, 50%);
+  /* ── Premium Modern Palette (Indigo/Blue) ── */
+  --primary-600: hsl(230, 75%, 45%);
+  --primary-500: hsl(230, 75%, 55%);
+  --primary-400: hsl(230, 80%, 65%);
 
-  --secondary-600: hsl(168, 75%, 35%);
-  --secondary-500: hsl(170, 70%, 42%);
+  --secondary-600: hsl(260, 70%, 50%);
+  --secondary-500: hsl(260, 75%, 60%);
 
-  --accent-blue: hsl(200, 80%, 50%);
-  --accent-teal: hsl(175, 70%, 42%);
-  --accent-green: hsl(145, 65%, 42%);
-  --accent-orange: hsl(30, 100%, 55%);
-  --accent-pink: hsl(320, 75%, 58%);
+  --accent-blue: hsl(210, 90%, 55%);
+  --accent-teal: hsl(180, 70%, 45%);
+  --accent-green: hsl(150, 65%, 45%);
+  --accent-orange: hsl(30, 90%, 55%);
+  --accent-pink: hsl(330, 75%, 60%);
 
-  /* ── Light / White Theme ── */
-  --bg-primary: hsl(0, 0%, 98%);
-  --bg-secondary: hsl(140, 20%, 96%);
-  --bg-tertiary: hsl(140, 15%, 92%);
+  /* ── Clean Light Theme ── */
+  --bg-primary: hsl(0, 0%, 100%);
+  --bg-secondary: hsl(220, 20%, 98%);
+  --bg-tertiary: hsl(220, 20%, 95%);
 
-  --text-primary: hsl(145, 30%, 12%);
-  --text-secondary: hsl(145, 15%, 35%);
-  --text-muted: hsl(145, 10%, 55%);
+  --text-primary: hsl(220, 30%, 15%);
+  --text-secondary: hsl(220, 15%, 40%);
+  --text-muted: hsl(220, 10%, 55%);
 
-  /* ── Glass Effects (light) ── */
-  --glass-bg: rgba(255, 255, 255, 0.75);
-  --glass-border: rgba(52, 160, 90, 0.18);
-  --glass-shadow: rgba(34, 120, 70, 0.10);
+  /* ── Glass Effects (light & sleek) ── */
+  --glass-bg: rgba(255, 255, 255, 0.85);
+  --glass-border: rgba(220, 225, 235, 0.8);
+  --glass-shadow: rgba(0, 20, 50, 0.04);
 
   /* ── Shadows ── */
-  --shadow-sm: 0 2px 8px rgba(34, 120, 70, 0.08);
-  --shadow-md: 0 4px 16px rgba(34, 120, 70, 0.12);
-  --shadow-lg: 0 8px 32px rgba(34, 120, 70, 0.15);
-  --shadow-xl: 0 16px 48px rgba(34, 120, 70, 0.20);
+  --shadow-sm: 0 2px 8px rgba(0, 20, 50, 0.04);
+  --shadow-md: 0 4px 16px rgba(0, 20, 50, 0.06);
+  --shadow-lg: 0 8px 32px rgba(0, 20, 50, 0.08);
+  --shadow-xl: 0 16px 48px rgba(0, 20, 50, 0.12);
 
   /* ── Spacing ── */
   --spacing-xs: 0.5rem;
@@ -46,10 +46,10 @@
   --spacing-4xl: 10rem;
 
   /* ── Border Radius ── */
-  --radius-sm: 0.75rem;
-  --radius-md: 1.5rem;
-  --radius-lg: 2rem;
-  --radius-xl: 3.5rem;
+  --radius-sm: 0.5rem;
+  --radius-md: 1rem;
+  --radius-lg: 1.5rem;
+  --radius-xl: 2.5rem;
 
   /* ── Transitions ── */
   --transition-fast: 150ms cubic-bezier(0.4, 0, 0.2, 1);
@@ -82,9 +82,9 @@ body::before {
   width: 100%;
   height: 100%;
   background:
-    radial-gradient(circle at 20% 30%, hsla(145, 65%, 50%, 0.10) 0%, transparent 50%),
-    radial-gradient(circle at 80% 70%, hsla(170, 70%, 48%, 0.08) 0%, transparent 50%),
-    radial-gradient(circle at 50% 50%, hsla(155, 60%, 55%, 0.06) 0%, transparent 50%);
+    radial-gradient(circle at 20% 30%, hsla(230, 75%, 65%, 0.05) 0%, transparent 50%),
+    radial-gradient(circle at 80% 70%, hsla(260, 75%, 65%, 0.05) 0%, transparent 50%),
+    radial-gradient(circle at 50% 50%, hsla(210, 90%, 65%, 0.05) 0%, transparent 50%);
   z-index: -1;
   animation: backgroundPulse 10s ease-in-out infinite;
 }
@@ -169,7 +169,7 @@ h3 {
   left: 0;
   width: 100%;
   height: 100%;
-  background: linear-gradient(135deg, rgba(52, 160, 90, 0.05) 0%, transparent 50%);
+  background: linear-gradient(135deg, rgba(100, 130, 255, 0.03) 0%, transparent 50%);
   opacity: 0;
   transition: opacity var(--transition-base);
   pointer-events: none;
@@ -182,8 +182,8 @@ h3 {
 .glass-card:hover {
   transform: translateY(-4px);
   box-shadow: var(--shadow-xl);
-  border-color: rgba(52, 160, 90, 0.30);
-  background: rgba(52, 160, 90, 0.05);
+  border-color: rgba(100, 130, 255, 0.15);
+  background: rgba(100, 130, 255, 0.03);
 }
 
 /* Buttons */
@@ -207,12 +207,12 @@ h3 {
 .btn-primary {
   background: linear-gradient(135deg, var(--primary-500), var(--secondary-500));
   color: white;
-  box-shadow: 0 4px 16px rgba(34, 140, 80, 0.30);
+  box-shadow: 0 4px 16px rgba(100, 130, 255, 0.25);
 }
 
 .btn-primary:hover {
   transform: translateY(-2px);
-  box-shadow: 0 8px 24px rgba(34, 140, 80, 0.40);
+  box-shadow: 0 8px 24px rgba(100, 130, 255, 0.35);
 }
 
 .btn-primary::after {
@@ -238,8 +238,8 @@ h3 {
 }
 
 .btn-secondary:hover {
-  background: rgba(52, 160, 90, 0.08);
-  border-color: rgba(52, 160, 90, 0.25);
+  background: rgba(100, 130, 255, 0.04);
+  border-color: rgba(100, 130, 255, 0.2);
 }
 
 /* Inputs */
@@ -259,7 +259,7 @@ h3 {
 
 .input-field:focus {
   border-color: var(--primary-500);
-  box-shadow: 0 0 0 3px rgba(52, 160, 90, 0.12);
+  box-shadow: 0 0 0 3px rgba(100, 130, 255, 0.15);
 }
 
 .input-field::placeholder {
@@ -268,7 +268,7 @@ h3 {
 
 select.input-field {
   appearance: none;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='%2334a05a' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='%236482ff' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
   background-repeat: no-repeat;
   background-position: right 1rem center;
   background-size: 1.2rem;
@@ -490,7 +490,7 @@ body > svg[id^="mermaid-"] {
 .mermaid-loader {
   width: 24px;
   height: 24px;
-  border: 2px solid rgba(52, 160, 90, 0.2);
+  border: 2px solid rgba(100, 130, 255, 0.2);
   border-top-color: var(--primary-500);
   border-radius: 50%;
   animation: mermaid-spin 0.6s linear infinite;

@@ -60,7 +60,7 @@ const DiagramBlock = ({ engine, code }: { engine: string, code: string }) => {
     }
 
     return (
-        <div style={{ background: '#ffffff', padding: '1.25rem', borderRadius: '12px', boxShadow: 'inset 0 0 20px rgba(0,0,0,0.01)', border: '1px solid rgba(52,160,90,0.05)', display: 'flex', justifyContent: 'center', width: '100%', minHeight: '80px', alignItems: 'center', position: 'relative' }}>
+        <div style={{ background: '#ffffff', padding: '1.25rem', borderRadius: '12px', boxShadow: 'inset 0 0 20px rgba(0,0,0,0.01)', border: '1px solid rgba(100,130,255,0.05)', display: 'flex', justifyContent: 'center', width: '100%', minHeight: '80px', alignItems: 'center', position: 'relative' }}>
             {loading && (
                 <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', background: 'rgba(255,255,255,0.7)', zIndex: 1, borderRadius: '12px', gap: '8px' }}>
                     <div className="mermaid-loader" />
@@ -88,6 +88,8 @@ interface Explanation {
     explanation: string;
     topic: string;
     subtopic: string;
+    image_url?: string;
+    video_url?: string;
 }
 
 export const Teacher = () => {
@@ -104,7 +106,7 @@ export const Teacher = () => {
     const [isLoading, setIsLoading] = useState(false);
     const [showDoubt, setShowDoubt] = useState(false);
     const [doubtText, setDoubtText] = useState('');
-    const [doubtAnswer, setDoubtAnswer] = useState<string | null>(null);
+    const [chatHistory, setChatHistory] = useState<{ role: 'user' | 'assistant'; content: string }[]>([]);
     const [isDownloading, setIsDownloading] = useState(false);
     const [doubtLoading, setDoubtLoading] = useState(false);
     const [savedNotes, setSavedNotes] = useState<{ name: string; display_name: string; signed_url: string; created_at: string }[]>([]);
@@ -169,7 +171,7 @@ export const Teacher = () => {
         if (!ms) return;
         const key = `${pIdx}-${mIdx}`;
         setExplanation(null);
-        setDoubtAnswer(null);
+        setChatHistory([]);
         setShowDoubt(false);
         setDoubtText('');
         setIsLoading(true);
@@ -206,7 +208,13 @@ export const Teacher = () => {
 
     const handleAskDoubt = async () => {
         if (!doubtText.trim() || !milestone || !phase || !selectedRoadmap) return;
+        
+        const currentText = doubtText;
+        const updatedHistory = [...chatHistory, { role: 'user' as const, content: currentText }];
+        setChatHistory(updatedHistory);
+        setDoubtText('');
         setDoubtLoading(true);
+        
         try {
             const res = await fetch('http://127.0.0.1:8000/teacher/explain', {
                 method: 'POST',
@@ -216,13 +224,14 @@ export const Teacher = () => {
                     subtopic: milestone.title,
                     domain: selectedRoadmap.title,
                     has_doubt: true,
-                    doubt_text: doubtText
+                    doubt_text: currentText,
+                    history: chatHistory
                 })
             });
             const data = await res.json();
-            setDoubtAnswer(data.explanation);
+            setChatHistory(prev => [...prev, { role: 'assistant' as const, content: data.explanation }]);
         } catch {
-            setDoubtAnswer('Could not get answer. Please try again.');
+            setChatHistory(prev => [...prev, { role: 'assistant' as const, content: 'Could not get answer. Please try again.' }]);
         } finally {
             setDoubtLoading(false);
         }
@@ -246,11 +255,13 @@ export const Teacher = () => {
         if (phase && milestoneIdx < phase.milestones.length - 1) {
             const nextMIdx = milestoneIdx + 1;
             setMilestoneIdx(nextMIdx);
+            setChatHistory([]); // Clear chat on topic change
             if (selectedRoadmap) loadExplanation(selectedRoadmap, phaseIdx, nextMIdx);
         } else if (selectedRoadmap && phaseIdx < selectedRoadmap.phases.length - 1) {
             const nextPIdx = phaseIdx + 1;
             setPhaseIdx(nextPIdx);
             setMilestoneIdx(0);
+            setChatHistory([]); // Clear chat on topic change
             loadExplanation(selectedRoadmap, nextPIdx, 0);
         }
     };
@@ -303,7 +314,7 @@ export const Teacher = () => {
             if (token.startsWith('**')) {
                 parts.push(<strong key={key++} style={{ color: 'var(--text-primary)', fontWeight: 700 }}>{token.slice(2, -2)}</strong>);
             } else {
-                parts.push(<code key={key++} style={{ background: 'rgba(52,160,90,0.12)', color: 'var(--primary-700)', padding: '1px 5px', borderRadius: '4px', fontSize: '0.85em', fontFamily: 'monospace' }}>{token.slice(1, -1)}</code>);
+                parts.push(<code key={key++} style={{ background: 'rgba(100,130,255,0.12)', color: 'var(--primary-700)', padding: '1px 5px', borderRadius: '4px', fontSize: '0.85em', fontFamily: 'monospace' }}>{token.slice(1, -1)}</code>);
             }
             last = m.index + token.length;
         }
@@ -332,7 +343,7 @@ export const Teacher = () => {
                 }
                 const diagramCode = codeLines.join('\n');
                 elements.push(
-                    <div key={i} style={{ margin: '1.5rem 0', background: 'rgba(52,160,90,0.02)', padding: '1.25rem', borderRadius: '12px', border: '1px solid rgba(52,160,90,0.1)' }}>
+                    <div key={i} style={{ margin: '1.5rem 0', background: 'rgba(100,130,255,0.02)', padding: '1.25rem', borderRadius: '12px', border: '1px solid rgba(100,130,255,0.1)' }}>
                         <div style={{ fontSize: '0.72rem', fontWeight: 800, color: 'var(--primary-600)', marginBottom: '0.85rem', textTransform: 'uppercase', letterSpacing: '0.8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
                             <span style={{ fontSize: '1rem' }}>📊</span> {engine.toUpperCase()} Architecture
                         </div>
@@ -366,7 +377,7 @@ export const Teacher = () => {
                 i++; continue;
             }
             if (line.startsWith('## ')) {
-                elements.push(<h4 key={i} style={{ color: 'var(--primary-600)', fontSize: '1rem', fontWeight: 800, margin: '1.25rem 0 0.5rem', borderBottom: '1px solid rgba(52,160,90,0.15)', paddingBottom: '4px' }}>{renderInline(line.slice(3))}</h4>);
+                elements.push(<h4 key={i} style={{ color: 'var(--primary-600)', fontSize: '1rem', fontWeight: 800, margin: '1.25rem 0 0.5rem', borderBottom: '1px solid rgba(100,130,255,0.15)', paddingBottom: '4px' }}>{renderInline(line.slice(3))}</h4>);
                 i++; continue;
             }
             if (line.startsWith('# ')) {
@@ -392,9 +403,9 @@ export const Teacher = () => {
                         <div key={`table-${i}`} style={{ overflowX: 'auto', margin: '0.75rem 0' }}>
                             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.87rem' }}>
                                 <thead>
-                                    <tr style={{ background: 'rgba(52,160,90,0.12)' }}>
+                                    <tr style={{ background: 'rgba(100,130,255,0.12)' }}>
                                         {headerCells.map((c, ci) => (
-                                            <th key={ci} style={{ padding: '8px 12px', textAlign: 'left', fontWeight: 700, color: 'var(--primary-700)', borderBottom: '2px solid rgba(52,160,90,0.3)', whiteSpace: 'nowrap' }}>
+                                            <th key={ci} style={{ padding: '8px 12px', textAlign: 'left', fontWeight: 700, color: 'var(--primary-700)', borderBottom: '2px solid rgba(100,130,255,0.3)', whiteSpace: 'nowrap' }}>
                                                 {renderInline(c)}
                                             </th>
                                         ))}
@@ -402,9 +413,9 @@ export const Teacher = () => {
                                 </thead>
                                 <tbody>
                                     {bodyRows.map((row, ri) => (
-                                        <tr key={ri} style={{ background: ri % 2 === 0 ? 'transparent' : 'rgba(52,160,90,0.04)' }}>
+                                        <tr key={ri} style={{ background: ri % 2 === 0 ? 'transparent' : 'rgba(100,130,255,0.04)' }}>
                                             {parseCells(row).map((c, ci) => (
-                                                <td key={ci} style={{ padding: '7px 12px', borderBottom: '1px solid rgba(52,160,90,0.08)', color: 'var(--text-primary)', lineHeight: 1.5 }}>
+                                                <td key={ci} style={{ padding: '7px 12px', borderBottom: '1px solid rgba(100,130,255,0.08)', color: 'var(--text-primary)', lineHeight: 1.5 }}>
                                                     {renderInline(c)}
                                                 </td>
                                             ))}
@@ -535,7 +546,7 @@ export const Teacher = () => {
                         <span style={{ fontSize: '0.65rem', fontWeight: 800, color: 'var(--text-muted)' }}>OVERALL PROGRESS</span>
                         <span style={{ fontWeight: 900, color: 'var(--primary-500)', fontSize: '1rem' }}>{overallProgress}%</span>
                     </div>
-                    <div style={{ height: '6px', background: 'rgba(52,160,90,0.12)', borderRadius: '3px' }}>
+                    <div style={{ height: '6px', background: 'rgba(100,130,255,0.12)', borderRadius: '3px' }}>
                         <div style={{ height: '100%', width: `${overallProgress}%`, background: 'var(--primary-500)', borderRadius: '3px', transition: 'width 0.5s ease' }} />
                     </div>
                     <p style={{ fontSize: '0.65rem', color: 'var(--text-muted)', marginTop: '4px' }}>{doneCount} / {totalMilestones} topics completed</p>
@@ -642,9 +653,41 @@ export const Teacher = () => {
                             )}
                         </div>
 
+                        {explanation?.image_url && (
+                             <div className="flex gap-md mb-lg" style={{ flexWrap: 'wrap' }}>
+                                 <div className="glass-card flex-1" style={{ padding: '0.4rem', minWidth: '300px' }}>
+                                     <img 
+                                        src={explanation.image_url} 
+                                        alt="Visual Context" 
+                                        style={{ width: '100%', maxHeight: '250px', objectFit: 'cover', borderRadius: '8px' }} 
+                                     />
+                                     <p style={{ fontSize: '0.65rem', color: 'var(--text-muted)', textAlign: 'center', marginTop: '4px', fontWeight: 700 }}>TECHNICAL REFERENCE IMAGE</p>
+                                 </div>
+                                 {explanation.video_url && (
+                                     <div className="glass-card flex-1" style={{ padding: '0.4rem', minWidth: '300px' }}>
+                                         {explanation.video_url.includes('youtube.com/embed') ? (
+                                             <iframe 
+                                                src={explanation.video_url} 
+                                                style={{ width: '100%', height: '250px', borderRadius: '8px', border: 'none' }} 
+                                                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" 
+                                                allowFullScreen
+                                             />
+                                         ) : (
+                                             <video 
+                                                src={explanation.video_url} 
+                                                controls 
+                                                style={{ width: '100%', maxHeight: '250px', borderRadius: '8px', background: '#000' }} 
+                                             />
+                                         )}
+                                         <p style={{ fontSize: '0.65rem', color: 'var(--text-muted)', textAlign: 'center', marginTop: '4px', fontWeight: 700 }}>CONCEPTUAL VIDEO GUIDE (UNDER 3 MINS)</p>
+                                     </div>
+                                 )}
+                             </div>
+                        )}
+
                         {isLoading ? (
                             <div className="flex-col items-center justify-center" style={{ padding: '3rem', gap: '1rem' }}>
-                                <div style={{ width: '40px', height: '40px', border: '3px solid rgba(52,160,90,0.2)', borderTopColor: 'var(--primary-500)', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
+                                <div style={{ width: '40px', height: '40px', border: '3px solid rgba(100,130,255,0.2)', borderTopColor: 'var(--primary-500)', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
                                 <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>Teacher AI is preparing your lesson…</p>
                             </div>
                         ) : explanation ? (
@@ -660,7 +703,7 @@ export const Teacher = () => {
 
                     {/* Doubt Section */}
                     {explanation && (
-                        <div className="glass-card" style={{ padding: '1.5rem', border: '1px solid rgba(52,160,90,0.2)' }}>
+                        <div className="glass-card" style={{ padding: '1.5rem', border: '1px solid rgba(100,130,255,0.2)' }}>
                             <div className="flex justify-between items-center" style={{ marginBottom: '1rem' }}>
                                 <h4 style={{ fontSize: '0.85rem', fontWeight: 800, color: 'var(--primary-600)' }}>
                                     🙋 Have a Doubt?
@@ -676,30 +719,57 @@ export const Teacher = () => {
 
                             {showDoubt && (
                                 <div className="flex-col gap-md fade-in">
-                                    <textarea
-                                        value={doubtText}
-                                        onChange={e => setDoubtText(e.target.value)}
-                                        placeholder="Type your doubt or question about this topic…"
-                                        className="input-field"
-                                        style={{ minHeight: '80px', resize: 'vertical', fontSize: '0.9rem', padding: '0.9rem' }}
-                                    />
-                                    <button
-                                        className="btn btn-primary"
-                                        style={{ alignSelf: 'flex-start', padding: '0.6rem 1.5rem' }}
-                                        onClick={handleAskDoubt}
-                                        disabled={!doubtText.trim() || doubtLoading}
-                                    >
-                                        {doubtLoading ? '⏳ Thinking…' : '🤖 Get Answer'}
-                                    </button>
-
-                                    {doubtAnswer && (
-                                        <div style={{ padding: '1.25rem', background: 'rgba(52,160,90,0.05)', borderRadius: '8px', border: '1px solid rgba(52,160,90,0.15)', marginTop: '0.5rem' }}>
-                                            <p style={{ fontSize: '0.72rem', fontWeight: 800, color: 'var(--primary-600)', marginBottom: '0.75rem', letterSpacing: '0.5px' }}>AI TEACHER RESPONSE</p>
-                                            <div style={{ lineHeight: 1.7 }}>
-                                                {formatExplanation(doubtAnswer)}
+                                    <div style={{ 
+                                        maxHeight: '400px', 
+                                        overflowY: 'auto', 
+                                        padding: '0.5rem',
+                                        display: 'flex',
+                                        flexDirection: 'column',
+                                        gap: '1rem'
+                                    }}>
+                                        {chatHistory.length === 0 ? (
+                                            <p style={{ textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.8rem', padding: '1rem' }}>Ask anything about this topic!</p>
+                                        ) : (
+                                            chatHistory.map((msg, i) => (
+                                                <div key={i} style={{
+                                                    alignSelf: msg.role === 'user' ? 'flex-end' : 'flex-start',
+                                                    maxWidth: '85%',
+                                                    padding: '0.75rem 1rem',
+                                                    borderRadius: msg.role === 'user' ? '14px 14px 0 14px' : '14px 14px 14px 0',
+                                                    background: msg.role === 'user' ? 'var(--primary-500)' : 'rgba(100,130,255,0.06)',
+                                                    color: msg.role === 'user' ? 'white' : 'var(--text-primary)',
+                                                    border: msg.role === 'user' ? 'none' : '1px solid rgba(100,130,255,0.15)',
+                                                    fontSize: '0.85rem'
+                                                }}>
+                                                    {msg.role === 'assistant' ? formatExplanation(msg.content) : msg.content}
+                                                </div>
+                                            ))
+                                        )}
+                                        {doubtLoading && (
+                                            <div style={{ alignSelf: 'flex-start', padding: '0.75rem 1rem', background: 'rgba(100,130,255,0.06)', borderRadius: '14px 14px 14px 0' }}>
+                                                <div style={{ width: '12px', height: '12px', border: '2px solid var(--primary-500)', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 0.6s linear infinite' }} />
                                             </div>
-                                        </div>
-                                    )}
+                                        )}
+                                    </div>
+
+                                    <div className="flex gap-sm" style={{ borderTop: '1px solid var(--glass-border)', paddingTop: '1rem' }}>
+                                        <input
+                                            value={doubtText}
+                                            onChange={e => setDoubtText(e.target.value)}
+                                            onKeyPress={e => e.key === 'Enter' && handleAskDoubt()}
+                                            placeholder="Ask a question…"
+                                            className="input-field"
+                                            style={{ flex: 1, fontSize: '0.85rem' }}
+                                        />
+                                        <button
+                                            className="btn btn-primary"
+                                            style={{ padding: '0.6rem' }}
+                                            onClick={handleAskDoubt}
+                                            disabled={!doubtText.trim() || doubtLoading}
+                                        >
+                                            🚀
+                                        </button>
+                                    </div>
                                 </div>
                             )}
                         </div>
@@ -707,7 +777,7 @@ export const Teacher = () => {
 
                     {/* ── Notes Library ── */}
                     {selectedRoadmap && (
-                        <div className="glass-card" style={{ padding: '1.5rem', border: '1px solid rgba(52,160,90,0.15)' }}>
+                        <div className="glass-card" style={{ padding: '1.5rem', border: '1px solid rgba(100,130,255,0.15)' }}>
                             <div className="flex justify-between items-center">
                                 <div className="flex items-center gap-md">
                                     <span style={{ fontSize: '1.2rem' }}>📁</span>
@@ -733,7 +803,7 @@ export const Teacher = () => {
                                 <div className="fade-in" style={{ marginTop: '1.25rem', borderTop: '1px solid var(--glass-border)', paddingTop: '1.25rem' }}>
                                     {notesLoading ? (
                                         <div className="flex items-center gap-md" style={{ padding: '1rem' }}>
-                                            <div style={{ width: '20px', height: '20px', border: '3px solid rgba(52,160,90,0.15)', borderTopColor: 'var(--primary-500)', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
+                                            <div style={{ width: '20px', height: '20px', border: '3px solid rgba(100,130,255,0.15)', borderTopColor: 'var(--primary-500)', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
                                             <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>Loading your saved notes…</p>
                                         </div>
                                     ) : savedNotes.length === 0 ? (
@@ -746,8 +816,8 @@ export const Teacher = () => {
                                             {savedNotes.map((note, i) => (
                                                 <div key={i} style={{
                                                     padding: '1rem 1.25rem',
-                                                    background: 'rgba(52,160,90,0.04)',
-                                                    border: '1px solid rgba(52,160,90,0.15)',
+                                                    background: 'rgba(100,130,255,0.04)',
+                                                    border: '1px solid rgba(100,130,255,0.15)',
                                                     borderRadius: '10px',
                                                     display: 'flex',
                                                     justifyContent: 'space-between',

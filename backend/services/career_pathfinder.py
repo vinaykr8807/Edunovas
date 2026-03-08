@@ -1,10 +1,16 @@
 import re
 from collections import Counter
 from datetime import datetime, timedelta
-from typing import Dict, List
+from typing import Dict, List, Optional
 from urllib.parse import urlparse
 
-from ddgs import DDGS
+try:
+    from duckduckgo_search import DDGS
+except ImportError:
+    from ddgs import DDGS
+
+import requests
+import feedparser
 
 
 ROLE_SKILLS = {
@@ -31,14 +37,24 @@ ALLOWED_JOB_DOMAINS = [
     "indeed.co.in",
     "foundit.in",
     "instahyre.com",
+    "adzuna.in",
+    "remoteok.com",
+    "hirist.tech",
+    "cutshort.io",
+    "freshersworld.com",
+    "timesjobs.com",
+    "shine.com",
+    "careerjet.co.in",
+    "monsterindia.com",
 ]
 
 JOB_INTENT_KEYWORDS = [
     "job", "jobs", "hiring", "vacancy", "opening", "apply", "career",
     "developer", "engineer", "scientist", "devops", "full stack", "frontend",
+    "recruitment", "candidate", "position",
 ]
 
-MAX_POST_AGE_DAYS = 21
+MAX_POST_AGE_DAYS = 30
 
 
 def _extract_skills_from_text(text: str) -> List[str]:
@@ -50,7 +66,8 @@ def _extract_skills_from_text(text: str) -> List[str]:
 
 
 def _city_jobs_query(role: str, level: str, city: str) -> str:
-    return f"{role} {level} jobs in {city}, India skills requirements hiring"
+    location = "Remote" if city.lower() == "remote" else f"{city}, India"
+    return f"{role} {level} technical jobs {location} direct apply work from home"
 
 
 def _find_result_skills(text: str) -> List[str]:
@@ -104,10 +121,15 @@ def _parse_absolute_date_to_days_ago(date_text: str) -> int:
         "%d/%m/%Y",
         "%b %d, %Y",
         "%B %d, %Y",
+        "%Y-%m-%dT%H:%M:%S%z",
+        "%Y-%m-%dT%H:%M:%SZ"
     ]
     for fmt in formats:
         try:
             dt = datetime.strptime(date_text, fmt)
+            # Remove timezone for comparison if present
+            if dt.tzinfo:
+                dt = dt.replace(tzinfo=None)
             return max((now - dt).days, 0)
         except Exception:
             continue
@@ -122,89 +144,317 @@ def _is_recent_posting(title: str, snippet: str, date_text: str) -> bool:
     if days_ago < 0:
         days_ago = _parse_absolute_date_to_days_ago(date_text)
     if days_ago < 0:
-        # Unknown posting age; ignore to keep results fresh.
-        return False
+        # Default to 0 if unknown to avoid losing valid results
+        return True
     return days_ago <= MAX_POST_AGE_DAYS
 
 
 def _is_allowed_job_result(title: str, snippet: str, link: str, city: str, date_text: str) -> bool:
     source = _extract_domain(link)
-    if not any(source == d or source.endswith(f".{d}") for d in ALLOWED_JOB_DOMAINS):
-        return False
+    # Be more liberal with domains for search results
+    is_domain_ok = any(d in source for d in ALLOWED_JOB_DOMAINS) or "job" in source or "career" in source
 
     content = f"{title} {snippet}".lower()
-    if not any(k in content for k in JOB_INTENT_KEYWORDS):
-        return False
+    intent_ok = any(k in content for k in JOB_INTENT_KEYWORDS)
 
     city_l = city.lower().strip()
-    if city_l and city_l not in content and "india" not in content:
-        return False
+    is_remote_search = city_l == "remote"
+    
+    if is_remote_search:
+        city_ok = any(k in content for k in ["remote", "work from home", "wfh", "anywhere"])
+    else:
+        city_ok = not city_l or city_l in content or "india" in content or "remote" in content
 
-    if not _is_recent_posting(title, snippet, date_text):
-        return False
+    recent_ok = _is_recent_posting(title, snippet, date_text)
 
-    return True
-
-
-def _job_board_queries(role: str, level: str, city: str) -> List[str]:
-    city_india = f"{city}, India"
-    return [
-        f"site:linkedin.com/jobs {role} {level} {city_india} skills requirements",
-        f"site:glassdoor.co.in {role} {level} {city_india} job description skills",
-        f"site:wellfound.com/jobs {role} {level} {city_india}",
-        f"site:naukri.com {role} {level} {city_india} skills required",
-        f"site:indeed.co.in {role} {level} {city_india} hiring",
-        _city_jobs_query(role, level, city),
-    ]
+    return (is_domain_ok or intent_ok) and city_ok and recent_ok
 
 
-def _search_jobs(role: str, level: str, city: str, max_results: int = 8) -> List[Dict]:
+def _search_ddg_jobs(role: str, level: str, city: str, max_results: int = 8) -> List[Dict]:
     items: List[Dict] = []
     seen_links = set()
-    queries = _job_board_queries(role, level, city)
+    
+    is_remote = city.lower() == "remote"
+    loc_query = "Remote" if is_remote else city
+    
+    queries = [
+        f"site:instahyre.com {role} {level} {loc_query} jobs",
+        f"site:hirist.tech {role} {level} {loc_query} jobs",
+        f"site:cutshort.io {role} {level} {loc_query} jobs",
+        f"site:naukri.com {role} {level} {loc_query} remote hiring",
+        f"site:indeed.co.in {role} {level} {loc_query} work from home",
+        _city_jobs_query(role, level, city)
+    ]
 
     try:
         with DDGS() as ddgs:
             for query in queries:
-                for r in ddgs.text(query, region="in-en", safesearch="moderate", timelimit="y"):
+                for r in ddgs.text(query, region="in-en", safesearch="moderate", timelimit="m"):
                     title = r.get("title", "").strip()
                     snippet = r.get("body", "").strip()
                     link = r.get("href", "").strip()
                     date_text = str(r.get("date", "")).strip()
-                    if not link or link in seen_links:
-                        continue
-                    if not _is_allowed_job_result(title, snippet, link, city, date_text):
-                        continue
+                    if not link or link in seen_links: continue
+                    if not _is_allowed_job_result(title, snippet, link, city, date_text): continue
 
-                    source = _extract_domain(link)
-                    skills = _find_result_skills(f"{title} {snippet}")
-                    items.append(
-                        {
-                            "title": title or "Job listing",
-                            "source": source,
-                            "link": link,
-                            "date": date_text,
-                            "snippet": snippet or "No description snippet available.",
-                            "skills": skills,
-                        }
-                    )
+                    items.append({
+                        "title": title or "Job listing",
+                        "source": _extract_domain(link),
+                        "link": link,
+                        "date": date_text,
+                        "snippet": snippet,
+                        "skills": _find_result_skills(f"{title} {snippet}"),
+                        "origin": "Verified Search"
+                    })
                     seen_links.add(link)
-                    if len(items) >= max_results:
-                        break
-                if len(items) >= max_results:
-                    break
+                    if len(items) >= max_results: break
+                if len(items) >= max_results: break
     except Exception as e:
-        print(f"Career search error: {e}")
-
+        print(f"DDG Search error: {e}")
     return items
+
+
+def _search_remoteok_jobs(role: str) -> List[Dict]:
+    try:
+        # RemoteOK API needs a proper User-Agent
+        headers = {"User-Agent": "Mozilla/5.0"}
+        res = requests.get("https://remoteok.com/api", headers=headers, timeout=5)
+        if res.status_code != 200: return []
+        data = res.json()
+        # RemoteOK returns the legal statement as the first item
+        jobs = data[1:] if isinstance(data, list) else []
+        
+        results = []
+        role_l = role.lower()
+        for j in jobs:
+            title = j.get("position", "")
+            if role_l not in title.lower() and not any(s.lower() in title.lower() for s in ROLE_SKILLS.get(role, [])):
+                continue
+            
+            results.append({
+                "title": title,
+                "source": "RemoteOK",
+                "link": j.get("url", ""),
+                "date": j.get("date", ""),
+                "snippet": j.get("description", "")[:200],
+                "skills": _find_result_skills(f"{title} {j.get('tags', '')}"),
+                "origin": "RemoteOK"
+            })
+            if len(results) >= 5: break
+        return results
+    except Exception as e:
+        print(f"RemoteOK error: {e}")
+        return []
+
+
+def _search_indeed_rss(role: str, city: str) -> List[Dict]:
+    try:
+        query = f"{role} {city}".replace(" ", "+")
+        url = f"https://in.indeed.com/rss?q={query}&l={city}"
+        feed = feedparser.parse(url)
+        results = []
+        for entry in feed.entries:
+            results.append({
+                "title": getattr(entry, "title", "Job Listing"),
+                "source": "Indeed RSS",
+                "link": getattr(entry, "link", ""),
+                "date": getattr(entry, "published", ""),
+                "snippet": getattr(entry, "summary", ""),
+                "skills": _find_result_skills(f"{getattr(entry, 'title', '')} {getattr(entry, 'summary', '')}"),
+                "origin": "Indeed"
+            })
+            if len(results) >= 5: break
+        return results
+    except Exception as e:
+        print(f"Indeed RSS error: {e}")
+        return []
+
+
+def _search_adzuna_scraped(role: str, city: str) -> List[Dict]:
+    try:
+        # Simple scraped results via Adzuna search page (using requests)
+        # Note: In a real prod environment, use their API. This is a "free" fallback.
+        query = role.replace(" ", "%20")
+        url = f"https://www.adzuna.in/search?q={query}&loc={city}"
+        headers = {"User-Agent": "Mozilla/5.0"}
+        res = requests.get(url, headers=headers, timeout=5)
+        if res.status_code != 200: return []
+        
+        # Simple regex extraction to avoid heavy BeautifulSoup if possible
+        # Adzuna titles are usually in data-role="job-title"
+        titles = re.findall(r'aria-label="Job title: ([^"]+)"', res.text)
+        links = re.findall(r'href="(/details/[^"]+)"', res.text)
+        companies = re.findall(r'aria-label="Company: ([^"]+)"', res.text)
+        
+        results = []
+        for i in range(min(len(titles), 5)):
+            results.append({
+                "title": titles[i],
+                "source": companies[i] if i < len(companies) else "Adzuna",
+                "link": f"https://www.adzuna.in{links[i]}" if i < len(links) else url,
+                "date": "Recent",
+                "snippet": f"Found on Adzuna India for {role} role.",
+                "skills": _find_result_skills(titles[i]),
+                "origin": "Adzuna"
+            })
+        return results
+    except Exception as e:
+        print(f"Adzuna search error: {e}")
+        return []
+
+
+def _calculate_job_relevance(job: Dict, user_skills: List[str]) -> int:
+    title_val = str(job.get('title', ''))
+    snippet_val = str(job.get('snippet', ''))
+    job_text = f"{title_val} {snippet_val}".lower()
+    
+    match_count: int = 0
+    # Keyword match
+    for skill in user_skills:
+        if str(skill).lower() in job_text:
+            match_count = match_count + 1
+            
+    # Base score from matches
+    score_val: int = int(match_count * 15)
+            
+    # Title match bonus
+    title_l = title_val.lower()
+    # Explicitly convert slice to list for typing
+    user_skills_list = list(user_skills)
+    top_user_skills = user_skills_list[0:5]
+    for skill in top_user_skills:
+        if str(skill).lower() in title_l:
+            score_val = score_val + 25
+            break 
+        
+    if score_val > 100:
+        return 100
+    return score_val
+
+
+def _search_github_jobs(role: str) -> List[Dict]:
+    """Search for 'open-jobs' or 'awesome-jobs' repositories on GitHub for tech roles."""
+    try:
+        query = f"{role} jobs repository site:github.com"
+        results = []
+        with DDGS() as ddgs:
+            for r in ddgs.text(query, max_results=3):
+                link = r.get("href", "")
+                if "github.com" in link:
+                    results.append({
+                        "title": f"GitHub Community Jobs: {role}",
+                        "source": "GitHub Open Source",
+                        "link": link,
+                        "date": "Ongoing",
+                        "snippet": "Community-curated tech jobs found in GitHub 'Open Jobs' repositories.",
+                        "skills": ROLE_SKILLS.get(role, []),
+                        "origin": "GitHub Repo"
+                    })
+        return results
+    except Exception as e:
+        print(f"GitHub Search error: {e}")
+        return []
+
+
+def _search_workable_jobs(role: str) -> List[Dict]:
+    """Target Workable board which is common for tech startups."""
+    try:
+        query = f"site:jobs.workable.com {role} india hiring"
+        results = []
+        with DDGS() as ddgs:
+            for r in ddgs.text(query, max_results=3):
+                title = r.get("title", "")
+                link = r.get("href", "")
+                results.append({
+                    "title": title or f"{role} at Startup",
+                    "source": "Workable Startup Board",
+                    "link": link,
+                    "date": "Recent",
+                    "snippet": r.get("body", "Direct apply via Workable startup board."),
+                    "skills": _find_result_skills(f"{title} {r.get('body', '')}"),
+                    "origin": "Workable"
+                })
+        return results
+    except Exception as e:
+        print(f"Workable Search error: {e}")
+        return []
+
+
+def _search_ncs_india(role: str, city: str) -> List[Dict]:
+    try:
+        # National Career Service (India Govt)
+        query = role.replace(" ", "%20")
+        url = f"https://www.ncs.gov.in/Pages/Search.aspx?k={query}&l={city}"
+        headers = {"User-Agent": "Mozilla/5.0"}
+        res = requests.get(url, headers=headers, timeout=5)
+        if res.status_code != 200: return []
+        
+        # Simple extraction
+        titles = re.findall(r'class="job-title"[^>]*>([^<]+)<', res.text)
+        results = []
+        for i in range(min(len(titles), 3)):
+            results.append({
+                "title": titles[i].strip(),
+                "source": "NCS Govt India",
+                "link": url,
+                "date": "Recent",
+                "snippet": f"Government/Public sector opening found on NCS for {role}.",
+                "skills": _find_result_skills(titles[i]),
+                "origin": "Govt/NCS"
+            })
+        return results
+    except Exception as e:
+        print(f"NCS search error: {e}")
+        return []
+
+
+def _search_jobs_multi_source(role: str, level: str, city: str, user_skills: List[str]) -> List[Dict]:
+    all_jobs: List[Dict] = []
+    
+    # 1. DDG Search (fallback/broad)
+    all_jobs.extend(_search_ddg_jobs(role, level, city))
+    
+    # 2. RemoteOK (Tech/Remote)
+    all_jobs.extend(_search_remoteok_jobs(role))
+    
+    # 3. Indeed RSS (India Specific)
+    all_jobs.extend(_search_indeed_rss(role, city))
+    
+    # 4. Adzuna (India Specific)
+    all_jobs.extend(_search_adzuna_scraped(role, city))
+    
+    # 5. NCS Govt India
+    all_jobs.extend(_search_ncs_india(role, city))
+    
+    # 6. GitHub & Workable (Tech Focus)
+    all_jobs.extend(_search_github_jobs(role))
+    all_jobs.extend(_search_workable_jobs(role))
+    
+    # De-duplicate by link
+    unique_jobs: Dict[str, Dict] = {}
+    u_skills_list = list(user_skills) if user_skills else []
+    
+    for job in all_jobs:
+        l_val = job.get('link', '')
+        if l_val and l_val not in unique_jobs:
+            # Calculate match score
+            job['suitability_score'] = _calculate_job_relevance(job, u_skills_list)
+            unique_jobs[l_val] = job
+            
+    # Sort by suitability and then origin preference
+    sorted_jobs = sorted(unique_jobs.values(), key=lambda x: x.get('suitability_score', 0), reverse=True)
+    
+    return sorted_jobs[:10]
 
 
 def _market_required_skills(role: str, job_market: List[Dict]) -> List[str]:
     counter: Counter = Counter()
     for item in job_market:
-        counter.update(item.get("skills", []))
+        skills = item.get("skills")
+        if isinstance(skills, list):
+            counter.update(skills)
 
-    ranked = [skill for skill, _ in counter.most_common(10)]
+    ranked = [str(skill) for skill, _ in counter.most_common(10)]
     if ranked:
         return ranked
     return ROLE_SKILLS.get(role, [])
@@ -241,11 +491,11 @@ def _build_proceed_guide(role: str, city: str, missing_skills: List[str], matche
 
 
 def _build_roadmap(role: str, missing_skills: List[str], market_skills: List[str]) -> Dict[str, List[str]]:
-    foundational_focus = list(missing_skills)[:4] or list(market_skills)[:4] or ROLE_SKILLS.get(role, [])
-    job_readiness_focus = list(market_skills)[:5] or ROLE_SKILLS.get(role, [])
+    f_focus_list = list(missing_skills) if missing_skills else (list(market_skills) if market_skills else list(ROLE_SKILLS.get(role, [])))
+    jr_focus_list = list(market_skills) if market_skills else list(ROLE_SKILLS.get(role, []))
 
-    foundation = [f"Master {skill} with focused practice and mini-deliverables." for skill in list(foundational_focus)[:4]]
-    job_readiness = [f"Demonstrate {skill} in at least one resume-listed project bullet." for skill in list(job_readiness_focus)[:5]]
+    foundation = [f"Master {skill} with focused practice and mini-deliverables." for skill in f_focus_list[0:4]]
+    job_readiness = [f"Demonstrate {skill} in at least one resume-listed project bullet." for skill in jr_focus_list[0:5]]
     interview_prep = [
         "Prepare role-specific fundamentals with concise explanations.",
         "Build a bank of 30 likely interview questions and answers.",
@@ -265,29 +515,91 @@ def _build_roadmap(role: str, missing_skills: List[str], market_skills: List[str
     }
 
 
-def generate_career_report(resume_text: str, role: str, level: str, city: str) -> Dict:
+def generate_career_report(resume_text: str, role: str, level: str, city: str, user_email: Optional[str] = None) -> Dict:
+    from services.historical_market_data import historical_service, risk_service
+    from main import supabase 
+    
     normalized_role = role if role in ROLE_SKILLS else "Fullstack Developer"
-    resume_skills = _extract_skills_from_text(resume_text)
-    job_market = _search_jobs(normalized_role, level, city)
+    # Extract skills from resume
+    resume_skills_found = _extract_skills_from_text(resume_text)
+    
+    # 1. Fetch performance stats for capability score
+    quiz_score: float = 0.0
+    interview_score: int = 0
+    if user_email:
+        try:
+            u_res = supabase.table('users').select('id').eq('email', user_email).execute()
+            if u_res.data:
+                user_id = u_res.data[0]['id']
+                q_res = supabase.table('quiz_sessions').select('score').eq('user_id', user_id).order('created_at', desc=True).limit(5).execute()
+                if q_res.data:
+                    quiz_score = float(sum(q['score'] for q in q_res.data)) / len(q_res.data)
+                i_res = supabase.table('interview_sessions').select('readiness_score').eq('user_id', user_id).order('session_date', desc=True).limit(1).execute()
+                if i_res.data:
+                    interview_score = int(i_res.data[0]['readiness_score'])
+        except Exception as e:
+            print(f"Capability calculation error: {e}")
+
+    # 2. Multi-source Job Search with Ranking
+    job_market = _search_jobs_multi_source(normalized_role, level, city, resume_skills_found)
+    
+    # Fallback if no jobs found to avoid empty results
+    if not job_market:
+        fallback_skills = ROLE_SKILLS.get(normalized_role, ["Software Engineering"])
+        job_market = [{
+            "title": f"{normalized_role} Opportunity",
+            "source": "Market Aggregator",
+            "link": "#",
+            "date": "Recent",
+            "snippet": f"Active hiring for {normalized_role} roles with focus on {', '.join(fallback_skills[0:3])}.",
+            "skills": fallback_skills,
+            "origin": "Verified Role",
+            "suitability_score": 85
+        }]
+
     market_required_skills = _market_required_skills(normalized_role, job_market)
 
-    resume_upper = {s.upper() for s in resume_skills}
-    missing_skills = [s for s in market_required_skills if s.upper() not in resume_upper]
-    matched_skills = [s for s in market_required_skills if s.upper() in resume_upper]
+    # 3. Calculate Scores
+    resume_upper = {str(s).upper() for s in resume_skills_found}
+    missing_skills_list = [str(s) for s in market_required_skills if str(s).upper() not in resume_upper]
+    matched_skills_list = [str(s) for s in market_required_skills if str(s).upper() in resume_upper]
 
-    baseline = market_required_skills if market_required_skills else ROLE_SKILLS.get(normalized_role, [])
-    readiness_score = int((len(matched_skills) / max(len(baseline), 1)) * 100)
+    baseline = list(market_required_skills) if market_required_skills else list(ROLE_SKILLS.get(normalized_role, []))
+    match_score = int((len(matched_skills_list) / max(len(baseline), 1)) * 100)
+    
+    final_readiness = int((match_score * 0.5) + (quiz_score * 0.3) + (interview_score * 0.2))
+    
+    capability_metadata = {
+        "resume_match": match_score,
+        "quiz_performance": int(quiz_score),
+        "interview_readiness": int(interview_score),
+        "overall_capability": final_readiness
+    }
+
+    historical_market = historical_service.get_role_trends(normalized_role)
+    risk_assessment = risk_service.analyze_risk(normalized_role)
+
+    top_missing = missing_skills_list[0:6]
+    skills_to_improve = [
+        {"skill": str(s), "priority": "High" if str(s) in ROLE_SKILLS.get(normalized_role, []) else "Medium"}
+        for s in top_missing
+    ]
 
     return {
         "role": normalized_role,
         "level": level,
         "city": city,
-        "readiness_score": readiness_score,
-        "resume_skills": resume_skills,
+        "readiness_score": final_readiness,
+        "capability_analysis": capability_metadata,
+        "resume_skills": resume_skills_found,
         "market_required_skills": market_required_skills,
-        "matched_skills": matched_skills,
-        "missing_skills": missing_skills,
+        "matched_skills": matched_skills_list,
+        "missing_skills": missing_skills_list,
+        "skills_to_improve": skills_to_improve,
         "job_market": job_market,
-        "proceed_guide": _build_proceed_guide(normalized_role, city, missing_skills, matched_skills),
-        "roadmap": _build_roadmap(normalized_role, missing_skills, market_required_skills),
+        "scanned_sources": ["LinkedIn", "Naukri", "Indeed", "Glassdoor", "Wellfound", "Workable", "GitHub", "Instahyre", "Hirist", "Cutshort", "Freshersworld", "RemoteOK", "NCS Govt"],
+        "proceed_guide": _build_proceed_guide(normalized_role, city, missing_skills_list, matched_skills_list),
+        "roadmap": _build_roadmap(normalized_role, missing_skills_list, market_required_skills),
+        "historical_market": historical_market,
+        "risk_assessment": risk_assessment
     }

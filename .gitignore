@@ -91,3 +91,5 @@ backend/Codex/Model/*.csv
 # Misc
 .cache/
 .parcel-cache/
+
+backend/JOBS DATASET/Job Dataset Indeed India.ldjson

@@ -6,6 +6,8 @@ interface JobMarketItem {
     link: string;
     snippet: string;
     skills: string[];
+    suitability_score?: number;
+    origin?: string;
 }
 
 interface CareerReport {
@@ -30,6 +32,22 @@ interface CareerReport {
         interview_prep: string[];
         projects: string[];
     };
+    capability_analysis?: {
+        resume_match: number;
+        quiz_performance: number;
+        interview_readiness: number;
+        overall_capability: number;
+    };
+    historical_market?: {
+        trend_line: { year: string; count: number }[];
+        top_historical_companies: { name: string; count: number }[];
+        total_historical_records: number;
+    };
+    risk_assessment?: {
+        score: number;
+        level: string;
+        reasons: string[];
+    };
 }
 
 export const CareerPathfinder = () => {
@@ -41,6 +59,8 @@ export const CareerPathfinder = () => {
     const [error, setError] = useState('');
     const [report, setReport] = useState<CareerReport | null>(null);
     const [hasStoredResume, setHasStoredResume] = useState(false);
+    const [isSubscribing, setIsSubscribing] = useState(false);
+    const [subscribeMsg, setSubscribeMsg] = useState('');
 
     useEffect(() => {
         const user = JSON.parse(localStorage.getItem('edunovas_user') || '{}');
@@ -80,6 +100,38 @@ export const CareerPathfinder = () => {
             setError('Unable to connect to backend.');
         } finally {
             setIsLoading(false);
+        }
+    };
+
+    const handleSubscribe = async () => {
+        const user = JSON.parse(localStorage.getItem('edunovas_user') || '{}');
+        if (!user.email) {
+            setSubscribeMsg('Please log in to subscribe.');
+            return;
+        }
+        setIsSubscribing(true);
+        setSubscribeMsg('');
+        try {
+            const res = await fetch('http://127.0.0.1:8000/job-agent/subscribe', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    user_email: user.email,
+                    role,
+                    city,
+                    min_score: 85
+                })
+            });
+            const data = await res.json();
+            if (data.success) {
+                setSubscribeMsg('✅ Subscribed! AI Agent will email you daily matches.');
+            } else {
+                setSubscribeMsg('❌ Subscription failed. Try again.');
+            }
+        } catch {
+            setSubscribeMsg('❌ Network error. Try again.');
+        } finally {
+            setIsSubscribing(false);
         }
     };
 
@@ -150,6 +202,25 @@ export const CareerPathfinder = () => {
                     {error && (
                         <div style={{ color: 'var(--accent-red)', fontSize: '0.8rem' }}>{error}</div>
                     )}
+
+                    <div style={{ marginTop: '1rem', borderTop: '1px solid var(--glass-border)', paddingTop: '1rem' }}>
+                        <h4 style={{ fontSize: '0.85rem', marginBottom: '0.5rem', color: 'var(--primary-400)' }}>AI Job Agent</h4>
+                        <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '0.8rem' }}>
+                            Let AI scan 15+ boards daily and notify you when 85%+ matching jobs appear.
+                        </p>
+                        <button 
+                            className="btn btn-secondary w-full" 
+                            onClick={handleSubscribe} 
+                            disabled={isSubscribing}
+                        >
+                            {isSubscribing ? 'SUBSCRIBING...' : '🔔 SUBSCRIBE TO JOB ALERTS'}
+                        </button>
+                        {subscribeMsg && (
+                            <p style={{ fontSize: '0.75rem', marginTop: '0.5rem', color: subscribeMsg.includes('✅') ? 'var(--accent-green)' : 'var(--accent-red)' }}>
+                                {subscribeMsg}
+                            </p>
+                        )}
+                    </div>
                 </div>
 
                 <div className="flex-col gap-lg">
@@ -165,23 +236,34 @@ export const CareerPathfinder = () => {
 
                     {report && (
                         <>
-                            <div className="glass-card" style={{ padding: '1.5rem', border: '1px solid var(--accent-blue)', background: 'rgba(0,100,255,0.05)' }}>
+                            <div className="glass-card" style={{ padding: '1.5rem', border: '1px solid var(--accent-blue)', background: 'linear-gradient(135deg, rgba(0,100,255,0.08) 0%, rgba(0,0,0,0) 100%)' }}>
                                 <div className="flex justify-between items-start" style={{ gap: '1rem', flexWrap: 'wrap' }}>
                                     <div>
-                                        <h3 style={{ fontSize: '1.1rem' }}>{report.role} in {report.city}</h3>
-                                        <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>{report.level} market readiness</p>
+                                        <h3 style={{ fontSize: '1.1rem', fontWeight: 900 }}>{report.role} in {report.city}</h3>
+                                        <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>{report.level} career suitability profile</p>
                                     </div>
                                     <div style={{ textAlign: 'right' }}>
-                                        <span style={{ fontSize: '2rem', fontWeight: 900, color: 'var(--accent-blue)' }}>{report.readiness_score}%</span>
-                                        <p style={{ fontSize: '0.65rem', textTransform: 'uppercase', opacity: 0.7 }}>Readiness</p>
+                                        <span style={{ fontSize: '2.4rem', fontWeight: 900, color: 'var(--accent-blue)', textShadow: '0 0 20px rgba(0,100,255,0.3)' }}>{report.readiness_score}%</span>
+                                        <p style={{ fontSize: '0.65rem', textTransform: 'uppercase', opacity: 0.7, fontWeight: 800 }}>Global Suitability</p>
                                     </div>
                                 </div>
-                                <div className="flex flex-wrap gap-xs mt-md" style={{ maxWidth: '100%', alignItems: 'flex-start' }}>
-                                    {report.resume_skills.slice(0, 14).map((s) => (
-                                        <span key={s} className="badge" style={{ fontSize: '0.75rem', padding: '0.35rem 0.7rem', lineHeight: 1.2 }}>{s}</span>
+                            </div>
+
+                            {report.capability_analysis && (
+                                <div className="glass-card grid grid-cols-3 gap-md" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', padding: '1.5rem', gap: '1rem' }}>
+                                    {[
+                                        { label: 'Resume Match', val: report.capability_analysis.resume_match, color: 'var(--accent-blue)', icon: '📄' },
+                                        { label: 'Quiz Capability', val: report.capability_analysis.quiz_performance, color: 'var(--accent-teal)', icon: '📝' },
+                                        { label: 'Interview Skill', val: report.capability_analysis.interview_readiness, color: 'var(--accent-orange)', icon: '🎤' }
+                                    ].map(stat => (
+                                        <div key={stat.label} className="flex-col items-center" style={{ textAlign: 'center', background: 'var(--glass-border)', padding: '1rem', borderRadius: '12px' }}>
+                                            <span style={{ fontSize: '1.2rem', marginBottom: '0.5rem' }}>{stat.icon}</span>
+                                            <span style={{ fontSize: '0.65rem', textTransform: 'uppercase', fontWeight: 800, color: 'var(--text-muted)', marginBottom: '0.2rem' }}>{stat.label}</span>
+                                            <span style={{ fontSize: '1.2rem', fontWeight: 900, color: stat.color }}>{stat.val}%</span>
+                                        </div>
                                     ))}
                                 </div>
-                            </div>
+                            )}
 
                             <div className="glass-card" style={{ padding: '1.5rem' }}>
                                 <h3 style={{ fontSize: '1rem', marginBottom: '1rem' }}>Skill Gap Summary</h3>
@@ -239,6 +321,57 @@ export const CareerPathfinder = () => {
                                 ))}
                             </div>
 
+                            {report.risk_assessment && (
+                                <div className="glass-card" style={{ padding: '1.5rem', border: `1px solid ${report.risk_assessment.level === 'High' ? 'var(--accent-red)' : 'var(--accent-orange)'}`, background: 'rgba(239,68,68,0.02)' }}>
+                                    <h3 style={{ fontSize: '1rem', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: 'sm', color: report.risk_assessment.level === 'High' ? 'var(--accent-red)' : 'var(--accent-orange)' }}>
+                                        🛡️ Recruitment Risk Assessment
+                                    </h3>
+                                    <div className="flex justify-between items-center" style={{ marginBottom: '1rem' }}>
+                                        <p style={{ fontSize: '0.9rem' }}>Risk Level: <strong>{report.risk_assessment.level}</strong></p>
+                                        <div style={{ width: '100px', height: '8px', background: 'var(--glass-border)', borderRadius: '4px', overflow: 'hidden' }}>
+                                            <div style={{ width: `${report.risk_assessment.score}%`, height: '100%', background: report.risk_assessment.level === 'High' ? 'var(--accent-red)' : 'var(--accent-orange)' }} />
+                                        </div>
+                                    </div>
+                                    <ul style={{ margin: 0, padding: 0, listStyle: 'none' }}>
+                                        {report.risk_assessment.reasons.map((r, i) => (
+                                            <li key={i} style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', marginBottom: '0.5rem', display: 'flex', gap: '0.5rem' }}>
+                                                <span>•</span> {r}
+                                            </li>
+                                        ))}
+                                    </ul>
+                                </div>
+                            )}
+
+                            {report.historical_market && report.historical_market.total_historical_records > 0 && (
+                                <div className="glass-card" style={{ padding: '1.5rem' }}>
+                                    <h3 style={{ fontSize: '1rem', marginBottom: '1.5rem' }}>📜 Long-Term Market Stability (2021-2025)</h3>
+                                    <div className="flex gap-md" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', height: '100px', background: 'rgba(52,160,90,0.02)', padding: '1rem', borderRadius: '12px', marginBottom: '1.5rem' }}>
+                                        {report.historical_market.trend_line.map((item, i) => {
+                                            const max = Math.max(...report.historical_market!.trend_line.map(t => t.count), 1);
+                                            const h = (item.count / max) * 100;
+                                            return (
+                                                <div key={item.year} className="flex-col items-center gap-xs" style={{ flex: 1, height: '100%', justifyContent: 'flex-end' }}>
+                                                    <div 
+                                                        style={{ 
+                                                            width: '100%', 
+                                                            height: `${h}%`, 
+                                                            background: i === 4 ? 'var(--accent-teal)' : 'rgba(20,184,166,0.3)', 
+                                                            borderRadius: '4px 4px 0 0', 
+                                                            minHeight: item.count > 0 ? '4px' : '0',
+                                                            transition: 'height 1.2s ease-out'
+                                                        }} 
+                                                    />
+                                                    <span style={{ fontSize: '0.65rem', fontWeight: 800, color: 'var(--text-muted)' }}>{item.year.slice(2)}</span>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                    <p style={{ fontSize: '0.82rem', color: 'var(--text-secondary)' }}>
+                                        Historically, this role has seen the most volume from: <strong>{report.historical_market.top_historical_companies.map(c => c.name).join(', ')}</strong>.
+                                    </p>
+                                </div>
+                            )}
+
                             <div className="glass-card" style={{ padding: '1.5rem' }}>
                                 <h3 style={{ fontSize: '1rem', marginBottom: '1rem' }}>Live Job Demand Signals ({report.job_market.length})</h3>
                                 <div className="flex-col gap-sm">
@@ -248,11 +381,24 @@ export const CareerPathfinder = () => {
                                             href={job.link}
                                             target="_blank"
                                             rel="noreferrer"
-                                            style={{ display: 'block', border: '1px solid var(--glass-border)', borderRadius: '10px', padding: '0.9rem', textDecoration: 'none' }}
+                                            style={{ display: 'block', border: '1px solid var(--glass-border)', borderRadius: '10px', padding: '0.9rem', textDecoration: 'none', position: 'relative', overflow: 'hidden' }}
                                         >
-                                            <p style={{ fontSize: '0.88rem', fontWeight: 700, color: 'var(--text-primary)', wordBreak: 'break-word' }}>{job.title}</p>
-                                            <p style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '0.2rem' }}>{job.source}</p>
-                                            <p style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', marginTop: '0.5rem', wordBreak: 'break-word' }}>{job.snippet}</p>
+                                            <div className="flex justify-between items-start">
+                                                <div style={{ flex: 1 }}>
+                                                    <p style={{ fontSize: '0.88rem', fontWeight: 700, color: 'var(--text-primary)', wordBreak: 'break-word' }}>{job.title}</p>
+                                                    <div className="flex gap-xs items-center" style={{ marginTop: '0.2rem' }}>
+                                                        <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>{job.source}</span>
+                                                        {job.origin && <span className="badge" style={{ fontSize: '0.6rem', padding: '2px 6px', background: 'var(--glass-border)' }}>{job.origin}</span>}
+                                                    </div>
+                                                </div>
+                                                {job.suitability_score !== undefined && (
+                                                    <div style={{ textAlign: 'right' }}>
+                                                        <span style={{ fontSize: '0.9rem', fontWeight: 900, color: job.suitability_score > 70 ? 'var(--accent-teal)' : 'var(--accent-blue)' }}>{job.suitability_score}%</span>
+                                                        <p style={{ fontSize: '0.55rem', textTransform: 'uppercase', opacity: 0.6 }}>Match</p>
+                                                    </div>
+                                                )}
+                                            </div>
+                                            <p style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', marginTop: '0.5rem', wordBreak: 'break-word', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{job.snippet}</p>
                                             <div className="flex flex-wrap gap-xs" style={{ marginTop: '0.55rem' }}>
                                                 {job.skills.slice(0, 8).map((s) => (
                                                     <span key={s} className="badge" style={{ fontSize: '0.66rem', padding: '0.2rem 0.5rem' }}>{s}</span>

@@ -3,11 +3,12 @@ import io
 import json
 from groq import Groq
 from dotenv import load_dotenv
+from services.pexels_service import get_pexels_image, get_pexels_video
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.units import cm
 from reportlab.lib import colors
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, HRFlowable
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, HRFlowable, Image
 from reportlab.lib.enums import TA_CENTER, TA_LEFT
 
 load_dotenv()
@@ -40,112 +41,179 @@ def _parse_groq_json(raw: str) -> dict:
 
 
 def get_market_skills(role: str, domain: str) -> dict:
-    """Ask Groq what skills the market currently demands for a given role/domain."""
-    prompt = f"""You are a tech hiring market analyst for India and global markets (2024-2025).
-For the role: "{role}" in domain: "{domain}", provide a structured JSON response with:
-- required_skills: list of 10-15 must-have technical skills demanded in job postings today
-- nice_to_have_skills: list of 5-8 bonus/emerging skills
-- top_tools: list of 5-6 specific tools/frameworks hiring managers look for
-- avg_salary_india: estimated salary range in INR (LPA format)
-- demand_level: "Very High" / "High" / "Moderate" / "Low"
-- growth_trend: short sentence about job market trend
+    """Ask Groq what skills the market currently demands for a given role/domain, enriched by live research."""
+    from services.market_research import get_market_trends
+    
+    # Live scrape current signals
+    search_query = f"top in-demand technical skills for {role} {domain} 2026 hiring trends india global"
+    market_raw = get_market_trends(search_query)
 
-Return ONLY valid JSON, no markdown, no explanation."""
+    prompt = f"""You are a Lead Tech Recruiter and Market Intelligence Analyst.
+Based on these current market signals:
+{market_raw}
+
+For the role: "{role}" in domain: "{domain}", provide a structured JSON response for a student:
+- required_skills: list of 10-12 must-have technical skills
+- nice_to_have_skills: list of 5-8 bonus/emerging skills
+- top_tools: list of 5-6 specific tools/frameworks
+- avg_salary_india: salary range in INR (LPA)
+- demand_level: "Very High" | "High" | "Moderate" | "Low"
+- growth_trend: A 2-sentence expert outlook on this role's future.
+- trend_analytics: A list of objects for a chart: [ {{"skill": "SkillName", "demand_score": 0-100}}, ... ] (top 6 skills)
+
+Return ONLY valid JSON."""
 
     try:
         response = client.chat.completions.create(
             model="llama-3.3-70b-versatile",
             messages=[{"role": "user", "content": prompt}],
-            temperature=0.3,
-            max_tokens=800
+            temperature=0.2,
+            max_tokens=1000,
+            response_format={"type": "json_object"}
         )
-        raw = response.choices[0].message.content.strip()
-        return _parse_groq_json(raw)
+        return _parse_groq_json(response.choices[0].message.content.strip())
     except Exception as e:
+        print(f"Market Skills Data Error: {e}")
         return {
-            "required_skills": ["Python", "JavaScript", "SQL", "Git", "REST APIs"],
-            "nice_to_have_skills": ["Docker", "Cloud", "CI/CD"],
-            "top_tools": ["VS Code", "GitHub", "Postman"],
-            "avg_salary_india": "6-18 LPA",
+            "required_skills": ["Technical Skill 1", "Technical Skill 2"],
+            "nice_to_have_skills": ["Emerging Tech 1"],
+            "top_tools": ["Industry Tool 1"],
+            "avg_salary_india": "6-15 LPA",
             "demand_level": "High",
-            "growth_trend": f"Strong demand for {role} professionals in 2025.",
+            "growth_trend": "Market is evolving with focus on AI integration.",
+            "trend_analytics": [{"skill": "Python", "demand_score": 90}, {"skill": "Cloud", "demand_score": 85}],
             "error": str(e)
         }
 
+def get_pro_coach_beginner_guide(role: str, domain: str) -> dict:
+    """Generates a professional 'Zero-to-Hero' coaching guide for absolute beginners."""
+    prompt = f"""You are a Senior Career Mentor. A student with ZERO knowledge wants to become a successful {role} in {domain}.
+Generate a professional, encouraging, and comprehensive 'Zero-to-Hero' Blueprint.
+Include:
+1. Executive Summary (The professional path)
+2. Week 1-4: The Foundation (What to learn first, exactly)
+3. Month 2-3: Building Competency
+4. Essential Soft Skills for {role}s
+5. Industry Trends they must watch.
+
+Return JSON:
+{{
+  "guide_title": "string",
+  "summary": "markdown",
+  "phases": [ {{"phase": "Phase Name", "focus": "markdown details"}} ],
+  "soft_skills": ["skill1", "skill2"],
+  "trends": ["trend1", "trend2"]
+}}
+"""
+    try:
+        res = client.chat.completions.create(
+            model="llama-3.3-70b-versatile",
+            messages=[{"role": "user", "content": prompt}],
+            response_format={"type": "json_object"}
+        )
+        return _parse_groq_json(res.choices[0].message.content)
+    except Exception as e:
+        return {"error": str(e)}
+
 
 def explain_subtopic(topic: str, subtopic: str, domain: str,
-                     has_doubt: bool = False, doubt_text: str = None) -> dict:
-    """Generate a Groq-powered explanation for a subtopic with RAG from DuckDuckGo and Mermaid support."""
+                     has_doubt: bool = False, doubt_text: str = None,
+                     history: list = None) -> dict:
+    """Generate a Groq-powered explanation for a subtopic with RAG and chat memory."""
     from services.rag_service import generate_rag_context
     
     rag_context = generate_rag_context(topic, subtopic, domain)
     context_injection = ""
     if rag_context:
-        context_injection = f"\n\nHere is some real-time extracted context from the web to help you:\n{rag_context}\n\nUse this context to provide an extremely detailed, context-aware explanation that scales from beginner to advanced.\n"
+        context_injection = f"\n\nHere is some real-time extracted context from the web to help you:\n{rag_context}\n\nUse this context to provide an extremely detailed, context-aware explanation.\n"
 
     if has_doubt and doubt_text:
-        prompt = f"""You are an expert {domain} tutor. A student is studying "{subtopic}" under "{topic}".
-They have this specific doubt: "{doubt_text}"
+        system_prompt = f"""You are an expert {domain} tutor. A student is studying "{subtopic}" under "{topic}".
 {context_injection}
-Provide a clear, structured response with:
-1. Direct answer to their doubt
-2. A concrete example
-3. Common misconception to avoid
-4. 1-2 follow-up study tips
+Provide a clear, conversational, and technical answer to their doubt.
+Use the conversation history for context to provide a continuous learning experience.
+Maintain a helpful and direct tone.
 
-Format in clear sections with headers. Be concise, practical, and encouraging."""
+Return a JSON object:
+{{
+  "explanation": "Markdown response with clear formatting..."
+}}
+"""
     else:
-        prompt = f"""You are a master {domain} tutor and highly experienced industry expert teaching "{subtopic}" (part of "{topic}").
+        system_prompt = f"""You are a master {domain} tutor and industry expert teaching "{subtopic}" (part of "{topic}").
 {context_injection}
-Provide an extremely deep, master-level explanation of this topic. Structure your response dynamically based on what best suits the topic, but ensure it scales from beginner-friendly intuition (so a novice can understand) to advanced, expert-level edge cases and real-world system design.
+Provide an extremely deep, master-level explanation of this topic.
+Your explanation MUST follow this exact structure and style:
 
-Use professional formatting with clear markdown headers. Your response should naturally adapt to the specific nature of this subtopic, but could broadly hit these points:
-## 📌 Beginner Intuition & Core Concept
-(What is it in simple terms? Why was it invented?)
+# 🏛️ Core Architecture & Mastery: {subtopic}
 
-## ⚙️ How it Works Under the Hood
-(The detailed mechanics, math, or logic behind it)
+## 📌 Beginner Intuition
+(Explain like I'm five. What is the real-world analogy? Why does this exist?)
 
-## 💻 Technical Syntax & Practical Examples
-(Code snippets, configuration setups, or formulas)
+## ⚙️ Deep-Dive Mechanics
+(Explain the underlying logic, architecture, and "how it works" in high detail.)
 
-## 🗺️ Visual Architecture
-(Provide a D2 diagram code block starting with ` ```d2 ` to visualize the architecture, flow, or system design. 
-D2 is much more powerful than Mermaid. Use this syntax:
-1. Connections: `User -> API: request`
-2. Containers: `Backend {{ label: "Server Side"; Auth -> Database }}`
-3. Shapes: `Cloud: {{ shape: cloud }}`
-4. Styling: Use simple labels and clear connections. Each statement MUST be on its own line.)
+## 💻 Technical Implementation
+(Provide clean, professional code examples or syntactical logic.)
 
-## 🚀 Advanced Use Cases & System Design
-(Where is this used in large-scale modern systems? What are its limits/edge cases?)
+## 🚀 Advanced System Design & Edge Cases
+(Where does it break? How do experts use it at scale?)
 
-## ⚠️ Common Pitfalls & Best Practices
-(What do experts know that beginners do not?)
+## 🗺️ Visual System Flowchart
+(MANDATORY: Provide a D2 diagram code block starting with ` ```d2 ` to visualize the architecture.
+Use this syntax:
+Backend {{ Auth -> DB }}
+User -> API: Request
+Cloud: {{ shape: cloud }}
+Each statement on a new line.)
 
-Be authoritative, precise, and highly engaging. adapt the flow to deeply explain this specific topic while scaling from beginner concepts to advanced applications."""
+## ⚠️ Expert Pitfalls & Optimization
+(What are the 3 things beginners get wrong?)
+
+Also, provide TWO search queries for image/video.
+IMPORTANT: For `visual_query`, Pexels (a stock photo site) is used. Do NOT use abstract academic or anatomical terms like "distributed systems core". Instead, use broad, simple technology photography terms (e.g. "server room", "cloud computing", "data center", "programmer typing", "software code"). Keep it 1-2 words.
+
+Return a JSON object:
+{{
+  "explanation": "FULL markdown content following the structure above...",
+  "visual_query": "broad tech stock photo keyword",
+  "video_query": "specific instructional video query"
+}}
+"""
+
+    messages = [{"role": "system", "content": system_prompt}]
+    if history:
+        for msg in history:
+            messages.append({"role": msg.get("role", "user"), "content": msg.get("content", "")})
+    
+    if has_doubt and doubt_text:
+        messages.append({"role": "user", "content": doubt_text})
+    else:
+        # Standard lesson request
+        messages.append({"role": "user", "content": f"Explain {subtopic} in {topic}."})
 
     try:
         response = client.chat.completions.create(
             model="llama-3.3-70b-versatile",
-            messages=[{"role": "user", "content": prompt}],
+            messages=messages,
             temperature=0.7,
-            max_tokens=3000
+            max_tokens=3000,
+            response_format={"type": "json_object"}
         )
-        explanation = response.choices[0].message.content.strip()
+        data = json.loads(response.choices[0].message.content.strip())
+        explanation = data.get("explanation", "")
+
+        # Fetch visuals using AI-generated specific queries
+        image_url = get_pexels_image(data.get("visual_query") or "technology computer")
+        video_url = get_pexels_video(data.get("video_query") or f"tutorial {subtopic}")
 
         return {
             "explanation": explanation,
             "topic": topic,
             "subtopic": subtopic,
-            "domain": domain
-        }
-
-        return {
-            "explanation": explanation,
-            "topic": topic,
-            "subtopic": subtopic,
-            "domain": domain
+            "domain": domain,
+            "image_url": image_url,
+            "video_url": video_url
         }
     except Exception as e:
         return {
@@ -170,18 +238,20 @@ def generate_topic_notes_pdf(topic: str, subtopic: str, domain: str) -> io.Bytes
 Generate structured notes with these sections in JSON:
 {{
   "summary": "2-3 sentence overview of the subtopic",
+  "beginner_intuition": "Simple analogy and overview...",
+  "mechanics": "Deep dive into how it works...",
+  "advanced_design": "System design and scaling...",
+  "d2_code": "D2 diagram code here...",
   "key_concepts": ["concept 1", "concept 2", "concept 3", "concept 4", "concept 5"],
   "table_data": [
-    {{"term": "Term 1", "definition": "Definition 1", "example": "Example 1"}},
-    {{"term": "Term 2", "definition": "Definition 2", "example": "Example 2"}},
-    {{"term": "Term 3", "definition": "Definition 3", "example": "Example 3"}}
+    {{"term": "Term 1", "definition": "Definition 1", "example": "Example 1"}}
   ],
-  "code_example": "Short code snippet or pseudocode showing the concept (if applicable, else empty string)",
-  "common_mistakes": ["mistake 1", "mistake 2", "mistake 3"],
-  "practice_tasks": ["task 1", "task 2", "task 3"]
+  "code_example": "Code snippet...",
+  "common_mistakes": ["mistake 1", "mistake 2"],
+  "practice_tasks": ["task 1", "task 2"]
 }}
 
-Return ONLY valid JSON."""
+Return ONLY valid JSON and include the D2 code for a visual architecture."""
 
     try:
         response = client.chat.completions.create(
@@ -248,6 +318,47 @@ Return ONLY valid JSON."""
     story.append(Paragraph("📌 Overview", section_style))
     story.append(Paragraph(_strip_md(data.get("summary", "")), body_style))
     story.append(Spacer(1, 10))
+
+    # Add Pexels Image to PDF
+    try:
+        from services.pexels_service import get_pexels_image
+        import requests
+        from io import BytesIO
+        img_url = get_pexels_image(f"technical {subtopic}")
+        if img_url:
+            resp = requests.get(img_url, timeout=5)
+            if resp.ok:
+                img_data = BytesIO(resp.content)
+                story.append(Image(img_data, width=16*cm, height=8*cm))
+                story.append(Spacer(1, 10))
+    except:
+        pass
+
+    # Detailed Sections
+    if data.get("beginner_intuition"):
+        story.append(Paragraph("🧠 Beginner Intuition", section_style))
+        story.append(Paragraph(_strip_md(data.get("beginner_intuition")), body_style))
+        story.append(Spacer(1, 10))
+
+    if data.get("mechanics"):
+        story.append(Paragraph("⚙️ Technical Mechanics", section_style))
+        story.append(Paragraph(_strip_md(data.get("mechanics")), body_style))
+        story.append(Spacer(1, 10))
+
+    # Flowchart Rendering (Kroki)
+    d2_code = data.get("d2_code")
+    if d2_code and isinstance(d2_code, str):
+        try:
+            import requests
+            from io import BytesIO
+            story.append(Paragraph("📊 Architecture Flowchart", section_style))
+            res = requests.post("https://kroki.io/d2/png", data=d2_code.encode(), timeout=5)
+            if res.ok:
+                diag_data = BytesIO(res.content)
+                story.append(Image(diag_data, width=16*cm, height=10*cm))
+                story.append(Spacer(1, 10))
+        except:
+            pass
 
     # Key Concepts
     story.append(Paragraph("🔑 Key Concepts", section_style))

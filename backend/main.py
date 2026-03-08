@@ -4,19 +4,50 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from typing import Optional, List
 import re
+import asyncio
+from contextlib import asynccontextmanager
 from router import detect_mode
 from llm_service import generate_response, extract_text_from_file, analyze_resume_domain
 from auth_service import get_password_hash, verify_password, create_access_token
 from supabase_client import supabase
-from datetime import datetime
+from datetime import datetime, timezone
 from assistants.interview_coach import analyze_resume_deep
 from assistants.quiz_master import generate_dynamic_quiz, generate_quiz_feedback
 from assistants.coding_mentor import analyze_code_deep
 from services.pdf_generator import generate_roadmap_pdf
 from services.career_pathfinder import generate_career_report
-from services.teacher_service import explain_subtopic, generate_topic_notes_pdf, get_market_skills
+from services.teacher_service import explain_subtopic, generate_topic_notes_pdf, get_market_skills, get_pro_coach_beginner_guide
+from services.historical_market_data import historical_service, risk_service
+from services.notification_service import notification_service
+from services.mock_interview_service import build_mock_plan, generate_mock_question, evaluate_mock_answer
 
-app = FastAPI()
+# --- Automated Daily Job Crawler ---
+async def background_job_crawler():
+    """Background task that automatically runs the job crawler every 24 hours."""
+    while True:
+        try:
+            # Wait a few seconds for server to fully initialize
+            await asyncio.sleep(15) 
+            print("🕒 [Auto-Crawler] Waking up to scan job boards...")
+            # run_job_crawler_manual is a synchronous function, we call it in thread if needed
+            # but since it's an API bound I/O mostly, it might block the loop lightly. For a background task, it's okay.
+            result = run_job_crawler_manual()
+            print(f"🕒 [Auto-Crawler] Result: {result.get('message', result)}")
+        except Exception as e:
+            print(f"🕒 [Auto-Crawler] Error: {e}")
+        
+        # Sleep for exactly 24 hours (86400 seconds) before running again
+        await asyncio.sleep(86400)
+
+@asynccontextmanager
+async def app_lifespan(app: FastAPI):
+    # Startup logic
+    crawler_task = asyncio.create_task(background_job_crawler())
+    yield
+    # Shutdown logic
+    crawler_task.cancel()
+
+app = FastAPI(lifespan=app_lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -30,8 +61,9 @@ app.add_middleware(
 def _sanitize_filename(filename: str) -> str:
     if not filename:
         return "resume.pdf"
-    safe = re.sub(r"[^A-Za-z0-9._-]", "_", filename)
-    return str(safe)[:180]
+    safe_name = re.sub(r"[^A-Za-z0-9._-]", "_", filename)
+    safe_str = str(safe_name)
+    return safe_str[:180]
 
 
 def _get_user_id_by_email(user_email: str) -> Optional[str]:
@@ -157,6 +189,16 @@ class QuizSubmission(BaseModel):
     topic: str
     score: int
     weak_areas: List[str]
+    subject: Optional[str] = "General"
+    domain: Optional[str] = "General"
+    quiz_mode: Optional[str] = "standard"
+    average_confidence: Optional[float] = 0.0
+
+class ExplanationEvaluationRequest(BaseModel):
+    user_email: str
+    topic: str
+    explanation: str
+    subject: str
 
 class QuizFeedbackRequest(BaseModel):
     results: List[dict]
@@ -410,8 +452,9 @@ def get_analytics():
         if p.get('skills'):
             for skill in p['skills']:
                 skill_counts[skill] = skill_counts.get(skill, 0) + 1
-    top_skills = sorted(skill_counts.items(), key=lambda x: x[1], reverse=True)[:10]
-    total_xp = sum(p.get('points', 0) for p in progress.data)
+    top_skills_pairs = sorted(skill_counts.items(), key=lambda x: x[1], reverse=True)
+    top_skills = top_skills_pairs[:10]
+    total_xp = sum(int(p.get('points', 0)) for p in progress.data)
 
     # Domain distribution from teacher_progress (how many topics done per domain)
     try:
@@ -434,7 +477,7 @@ def get_analytics():
     try:
         interview_rows = supabase.table('interview_sessions').select('readiness_score').execute()
         total_interviews = len(interview_rows.data)
-        avg_readiness = round(sum(r.get('readiness_score', 0) for r in interview_rows.data) / total_interviews, 1) if total_interviews else 0
+        avg_readiness = round(float(sum(r.get('readiness_score', 0) for r in interview_rows.data)) / max(total_interviews, 1), 1) if total_interviews else 0
     except Exception:
         total_interviews = 0
         avg_readiness = 0
@@ -443,7 +486,7 @@ def get_analytics():
     try:
         coding_rows = supabase.table('coding_sessions').select('optimization_score').execute()
         total_optimizations = len(coding_rows.data)
-        avg_optimization = round(sum(r.get('optimization_score', 80) for r in coding_rows.data) / total_optimizations, 1) if total_optimizations else None
+        avg_optimization = round(float(sum(r.get('optimization_score', 80) for r in coding_rows.data)) / max(total_optimizations, 1), 1) if total_optimizations else None
     except Exception:
         total_optimizations = 0
         avg_optimization = None
@@ -485,7 +528,7 @@ def get_student_performance():
 
             # Code optimizations
             coding = supabase.table('coding_sessions').select('optimization_score').eq('user_id', uid).execute()
-            avg_opt = round(sum(c['optimization_score'] for c in coding.data) / len(coding.data), 1) if coding.data else None
+            avg_opt = round(float(sum(c['optimization_score'] for c in coding.data)) / max(len(coding.data), 1), 1) if coding.data else None
 
             result.append({
                 "user_id": uid,
@@ -500,7 +543,7 @@ def get_student_performance():
                 "last_topic": done_topics[-1]['milestone_title'] if done_topics else None,
                 "interview_sessions": len(iv.data),
                 "latest_readiness": iv.data[0]['readiness_score'] if iv.data else None,
-                "avg_readiness": round(sum(s['readiness_score'] for s in iv.data) / len(iv.data), 1) if iv.data else None,
+                "avg_readiness": round(float(sum(s['readiness_score'] for s in iv.data)) / max(len(iv.data), 1), 1) if iv.data else None,
                 "last_interview_role": iv.data[0]['role'] if iv.data else None,
                 "code_optimizations_done": len(coding.data),
                 "avg_optimization_score": avg_opt
@@ -565,14 +608,100 @@ async def career_pathfinder_endpoint(
     text, source_path, error = _load_resume_text(file, user_email)
     if error:
         return {"error": error}
-    report = generate_career_report(text, role, level, city)
+    report = generate_career_report(text, role, level, city, user_email=user_email)
     report["source_resume_path"] = source_path
     return report
 
+class JobAgentSubscribeRequest(BaseModel):
+    user_email: str
+    role: str
+    city: str
+    min_score: int = 90
+
+@app.post("/job-agent/subscribe")
+def subscribe_job_agent(req: JobAgentSubscribeRequest):
+    """Enable the AI Job Agent for daily automated notifications."""
+    try:
+        user_res = supabase.table('users').select('id').eq('email', req.user_email).execute()
+        if not user_res.data:
+            raise HTTPException(status_code=404, detail="User not found.")
+        user_id = user_res.data[0]['id']
+        
+        # Upsert subscription
+        existing = supabase.table('job_notifications').select('*').eq('user_id', user_id).eq('role', req.role).eq('city', req.city).execute()
+        
+        if existing.data:
+            supabase.table('job_notifications').update({
+                'is_active': True,
+                'min_score': req.min_score,
+                'updated_at': datetime.now(timezone.utc).isoformat()
+            }).eq('id', existing.data[0]['id']).execute()
+        else:
+            supabase.table('job_notifications').insert({
+                'user_id': user_id,
+                'role': req.role,
+                'city': req.city,
+                'min_score': req.min_score
+            }).execute()
+        
+        return {"success": True, "message": "Subscribed to AI Job Alerts successfully!"}
+    except Exception as e:
+        print(f"Subscription error: {e}")
+        return {"success": False, "error": str(e)}
+
+@app.post("/job-agent/run-crawler")
+def run_job_crawler_manual():
+    """Manually trigger the background crawler to find jobs for all active subscribers."""
+    from services.career_pathfinder import _search_jobs_multi_source, _extract_skills_from_text
+    try:
+        subs = supabase.table('job_notifications').select('*, users(email)').eq('is_active', True).execute()
+        if not subs.data:
+            return {"success": True, "message": "No active subscribers."}
+            
+        notifications_sent: int = 0
+        for sub in subs.data:
+            user_id = sub['user_id']
+            user_email = sub['users']['email']
+            role = sub['role']
+            city = sub['city']
+            min_score = sub['min_score']
+            
+            # Fetch user's latest resume to extract skills
+            # This is simplified; ideally we store extracted skills in profile
+            resume_res = supabase.table('student_profiles').select('skills').eq('user_id', user_id).execute()
+            user_skills = resume_res.data[0]['skills'] if resume_res.data and resume_res.data[0].get('skills') else []
+            
+            jobs = _search_jobs_multi_source(role, "Mid-Level", city, user_skills)
+            
+            high_matches = []
+            for job in jobs:
+                score = job.get('suitability_score', 0)
+                link = job.get('link', '')
+                if score >= min_score and link:
+                    # Check if already notified
+                    if not notification_service.was_notified(supabase, user_id, link):
+                        high_matches.append(job)
+                        notification_service.record_match(supabase, user_id, link, score)
+                        
+            if high_matches:
+                if notification_service.send_job_notification(user_email, high_matches):
+                    notifications_sent += 1
+                    supabase.table('job_notifications').update({'last_notified_at': datetime.now(timezone.utc).isoformat()}).eq('id', sub['id']).execute()
+                    
+        return {"success": True, "message": f"Crawler finished. Sent {notifications_sent} notifications."}
+    except Exception as e:
+        print(f"Crawler error: {e}")
+        return {"success": False, "error": str(e)}
+
 @app.get("/generate-quiz")
-def get_quiz_endpoint(subject: str, topic: str, difficulty: str, domain: Optional[str] = None, subtopic: Optional[str] = None):
+def get_quiz_endpoint(subject: str, topic: str, difficulty: str, mode: str = "standard", domain: Optional[str] = None, subtopic: Optional[str] = None):
     from assistants.quiz_master import generate_dynamic_quiz
-    return generate_dynamic_quiz(subject, topic, difficulty, domain, subtopic)
+    return generate_dynamic_quiz(subject, topic, difficulty, mode, domain, subtopic)
+
+@app.post("/evaluate-explanation")
+def evaluate_explanation_endpoint(data: ExplanationEvaluationRequest):
+    from assistants.quiz_master import evaluate_student_explanation
+    return evaluate_student_explanation(data.topic, data.explanation, data.subject)
 
 @app.post("/submit-quiz")
 def submit_quiz_endpoint(data: QuizSubmission):
@@ -585,16 +714,14 @@ def submit_quiz_endpoint(data: QuizSubmission):
     now = datetime.now(timezone.utc).isoformat()
     
     try:
-        # Save to teacher_progress or a separate quiz_performance table if it exists
-        # For now, let's update user_progress points
-        points_earned = 10 + (data.score // 10) # Base 10 + 1 per 10% score
-        
+        # 1. Update general points
+        points_earned = 10 + (data.score // 10)
         current_progress = supabase.table('user_progress').select('points').eq('user_id', user_id).execute()
         if current_progress.data:
             new_points = current_progress.data[0].get('points', 0) + points_earned
             supabase.table('user_progress').update({'points': new_points}).eq('user_id', user_id).execute()
         
-        # Persistence: Log the detailed quiz attempt for real-time stats
+        # 2. Log quiz session (Legacy/Analytics)
         supabase.table('quiz_sessions').insert({
             'user_id': user_id,
             'domain': data.domain,
@@ -604,6 +731,40 @@ def submit_quiz_endpoint(data: QuizSubmission):
             'weak_areas': data.weak_areas,
             'created_at': now
         }).execute()
+
+        # 3. Log to quiz_history (New schema support)
+        supabase.table('quiz_history').insert({
+            'user_id': user_id,
+            'topic': data.topic,
+            'score': data.score,
+            'weak_areas': data.weak_areas,
+            'quiz_mode': data.quiz_mode,
+            'average_confidence': data.average_confidence,
+            'date': now
+        }).execute()
+
+        # 4. Update Topic-Level Mastery (Knowledge Graph Tracking)
+        mastery_inc = (data.score / 100.0) * 0.2 # Max 20% mastery increase per quiz
+        existing_tracking = supabase.table('progress_tracking').select('mastery_level').eq('user_id', user_id).eq('topic', data.topic).execute()
+        
+        if existing_tracking.data:
+            new_mastery = min(1.0, existing_tracking.data[0].get('mastery_level', 0) + mastery_inc)
+            status = 'done' if new_mastery > 0.8 else 'learning' if new_mastery > 0.3 else 'struggling' if data.score < 40 else 'learning'
+            supabase.table('progress_tracking').update({
+                'mastery_level': new_mastery,
+                'confidence_score': data.average_confidence,
+                'topic_status': status,
+                'last_practiced': now
+            }).eq('user_id', user_id).eq('topic', data.topic).execute()
+        else:
+            supabase.table('progress_tracking').insert({
+                'user_id': user_id,
+                'topic': data.topic,
+                'mastery_level': min(1.0, mastery_inc),
+                'confidence_score': data.average_confidence,
+                'topic_status': 'learning',
+                'last_practiced': now
+            }).execute()
         
         return {"success": True, "score": data.score, "points_earned": points_earned}
     except Exception as e:
@@ -778,22 +939,88 @@ class TeacherExplainRequest(BaseModel):
     domain: str
     has_doubt: bool = False
     doubt_text: Optional[str] = None
-    user_email: Optional[str] = None  # Used to persist notes to Supabase Storage
+    user_email: Optional[str] = None
+    history: Optional[List[dict]] = [] # [{role: "user", content: "..."}]
 
 class MarketSkillsRequest(BaseModel):
     role: str
     domain: str
+    user_email: Optional[str] = None
+
+@app.post("/coach/historical-trends")
+def coach_historical_trends(req: MarketSkillsRequest):
+    """Fetch historical trends for the specified role and domain."""
+    return historical_service.get_role_trends(req.role, req.domain)
 
 @app.post("/teacher/market-skills")
 def teacher_market_skills(req: MarketSkillsRequest):
     """Return what skills the market demands for the given role/domain via Groq."""
-    result = get_market_skills(req.role, req.domain)
-    return result
+    if req.user_email:
+        try:
+            u = supabase.table('users').select('id').eq('email', req.user_email).execute()
+            if u.data:
+                supabase.table('market_insights').insert({
+                    'user_id': u.data[0]['id'],
+                    'role': req.role,
+                    'domain': req.domain,
+                    'type': 'market_skills'
+                }).execute()
+        except: pass
+    return get_market_skills(req.role, req.domain)
+
+@app.post("/coach/beginner-guide")
+def coach_beginner_guide(req: MarketSkillsRequest):
+    """Generate a pro mentor guide for beginners."""
+    if req.user_email:
+        try:
+            u = supabase.table('users').select('id').eq('email', req.user_email).execute()
+            if u.data:
+                supabase.table('market_insights').insert({
+                    'user_id': u.data[0]['id'],
+                    'role': req.role,
+                    'domain': req.domain,
+                    'type': 'beginner_guide'
+                }).execute()
+        except: pass
+    return get_pro_coach_beginner_guide(req.role, req.domain)
+
+class MockInterviewPlanReq(BaseModel):
+    role: str
+    domain: str
+    extracted_skills: List[str]
+
+@app.post("/coach/mock-interview/plan")
+def mock_interview_plan(req: MockInterviewPlanReq):
+    plan = build_mock_plan(req.role, req.domain, req.extracted_skills)
+    return {"plan": plan, "difficulty": "Medium", "questions": []}
+
+class MockInterviewEvalReq(BaseModel):
+    role: str
+    domain: str
+    question: str
+    answer: str
+
+@app.post("/coach/mock-interview/evaluate")
+def mock_interview_evaluate(req: MockInterviewEvalReq):
+    ev = evaluate_mock_answer(req.question, req.answer, req.role, req.domain)
+    return ev
+
+class MockInterviewQuestionReq(BaseModel):
+    role: str
+    domain: str
+    plan_item: dict
+    asked_questions: List[str]
+    difficulty: str
+
+@app.post("/coach/mock-interview/question")
+def mock_interview_question(req: MockInterviewQuestionReq):
+    q = generate_mock_question(req.role, req.domain, req.plan_item, req.asked_questions, req.difficulty)
+    return q
 
 @app.post("/teacher/explain")
 def teacher_explain(req: TeacherExplainRequest):
     """Groq-powered subtopic explanation. If has_doubt, answer the specific doubt."""
-    result = explain_subtopic(req.topic, req.subtopic, req.domain, req.has_doubt, req.doubt_text)
+    result = explain_subtopic(req.topic, req.subtopic, req.domain, req.has_doubt, req.doubt_text, req.history)
     return result
 
 @app.post("/teacher/generate-notes")
@@ -801,7 +1028,8 @@ def teacher_generate_notes(req: TeacherExplainRequest):
     """Generate professional PDF notes, save to Supabase Storage, and stream for download."""
     import time, io
     pdf_buffer = generate_topic_notes_pdf(req.topic, req.subtopic, req.domain)
-    safe_name = str(re.sub(r"[^A-Za-z0-9_-]", "_", req.subtopic))[:60]
+    safe_name_raw = str(re.sub(r"[^A-Za-z0-9_-]", "_", req.subtopic))
+    safe_name = safe_name_raw[:60]
     filename = f"{safe_name}_Notes.pdf"
 
     # --- Persist to Supabase Storage if user is logged in ---
@@ -880,8 +1108,40 @@ def list_student_notes(user_email: str):
         print(f"List notes error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.get("/admin/market-insights")
+def admin_market_insights():
+    try:
+        res = supabase.table('market_insights').select('*').execute()
+        # Simple aggregation
+        roles = {}
+        domains = {}
+        for row in res.data:
+            roles[row['role']] = roles.get(row['role'], 0) + 1
+            domains[row['domain']] = domains.get(row['domain'], 0) + 1
+        
+        top_roles_list = sorted([{"name": k, "count": v} for k, v in roles.items()], key=lambda x: x["count"], reverse=True)
+        top_domains_list = sorted([{"name": k, "count": v} for k, v in domains.items()], key=lambda x: x["count"], reverse=True)
+        
+        return {
+            "top_roles": top_roles_list[:5],
+            "top_domains": top_domains_list[:5],
+            "total_searches": len(res.data)
+        }
+    except Exception as e:
+        print(f"Admin Market Insight Error: {e}")
+        return {"top_roles": [], "top_domains": [], "total_searches": 0}
+
+@app.get("/admin/historical-market-overview")
+def admin_historical_market_overview():
+    """Historical overview of job market data from static dataset."""
+    return historical_service.get_market_overview()
+
+@app.get("/admin/risk-overview")
+def admin_risk_overview():
+    """Historical risk overview from fraud dataset."""
+    return risk_service.get_fraud_overview()
+
 if __name__ == "__main__":
     import uvicorn
     print("🚀 Starting Edunovas Backend...")
     uvicorn.run(app, host="0.0.0.0", port=8000)
-
