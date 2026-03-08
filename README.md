@@ -1,271 +1,239 @@
-# 🎓 Edunovas AI Learning Platform
+# Edunovas
 
-> **Next-Generation AI-Powered Educational Ecosystem for Technical Excellence**
+AI-assisted learning and career development platform built with React (frontend), FastAPI (backend), and Supabase (data/storage).
 
-Edunovas is a comprehensive AI-driven learning platform that provides personalized mentorship, adaptive assessments, and career guidance for students pursuing technical careers. Built with React, FastAPI, and powered by advanced LLM technology.
+## Overview
 
-![Edunovas Dashboard](https://img.shields.io/badge/Status-Production%20Ready-success)
-![License](https://img.shields.io/badge/License-MIT-blue)
-![React](https://img.shields.io/badge/React-19.2.0-61DAFB?logo=react)
-![FastAPI](https://img.shields.io/badge/FastAPI-Latest-009688?logo=fastapi)
+Edunovas combines multiple learning modules in one interface:
 
----
+- Interview coaching with resume analysis and readiness scoring
+- Adaptive quiz generation and topic-level mastery tracking
+- Coding mentor with sandboxed execution and AI optimization feedback
+- Career pathfinder with market signals and job matching
+- Teacher mode with explainers, generated notes, and downloadable PDFs
+- Admin analytics for platform and student-performance monitoring
 
-## ✨ Features
+## Repository Structure
 
-### 🤖 **8 Specialized AI Assistants**
-- **Interview Coach** - Resume analysis, skill gap detection, personalized roadmaps
-- **Quiz Master** - Adaptive assessments with AI-powered feedback
-- **Coding Mentor** - Code review, bug detection, optimization suggestions
-- **Career Pathfinder** - Structured learning paths with market insights
-- **Teacher AI** - Concept explanations and academic support
-- **Success Coach** - Motivation and progress tracking
-- **Router** - Intelligent mode detection
-- **Support Agent** - Platform assistance
-
-### 🎯 **Core Capabilities**
-- **Resume Intelligence** - OCR support (PDF, DOCX, Images) with skill extraction
-- **Market Research** - Real-time job market data integration via DuckDuckGo
-- **RAG System** - Knowledge base retrieval using FAISS + SentenceTransformers
-- **Gamification** - XP points, levels, badges, and streak tracking
-- **Admin Analytics** - Real-time metrics, domain distribution, skill mapping
-- **Progress Tracking** - Quiz history, interview scores, coding patterns
-
----
-
-## 🏗️ Architecture
-
-```
-Edunovas/
-├── src/                    # React Frontend
-│   ├── components/         # Reusable UI components
-│   ├── pages/             # Main application pages
-│   │   └── forge/         # Student learning modules
-│   ├── hooks/             # Custom React hooks
-│   ├── data/              # Static configurations
-│   └── types/             # TypeScript definitions
-│
-├── backend/               # FastAPI Backend
-│   ├── assistants/        # Specialized AI modules
-│   ├── services/          # Business logic
-│   │   ├── rewards.py     # Gamification engine
-│   │   ├── tracker.py     # Progress tracking
-│   │   ├── rag.py         # Knowledge retrieval
-│   │   └── market_research.py
-│   ├── main.py            # API endpoints
-│   ├── database.py        # SQLAlchemy models
-│   └── llm_service.py     # Groq AI integration
-│
-└── supabase/              # Database migrations
+```text
+.
+├── src/                         # React + TypeScript frontend (Vite)
+│   ├── pages/                   # Home, Assistant, Admin, Login, etc.
+│   ├── pages/forge/             # Core learning modules
+│   ├── components/              # UI and shared components
+│   └── hooks/                   # Frontend data/API hooks
+├── backend/                     # FastAPI backend
+│   ├── assistants/              # Interview, quiz, coding assistant logic
+│   ├── services/                # Domain services (teacher, market, jobs, etc.)
+│   ├── migrations/              # SQL/Python migration helpers
+│   ├── Codex/                   # Datasets and utilities for CodeX features
+│   └── JOBS DATASET/            # Historical/market datasets used by services
+├── supabase/
+│   ├── config.toml
+│   └── migrations/              # Supabase SQL migrations
+└── README.md
 ```
 
----
+## Tech Stack
 
-## 🚀 Quick Start
+- Frontend: React 19, TypeScript, React Router, Vite
+- Backend: FastAPI, Pydantic, SQLAlchemy, Supabase Python client
+- AI/ML: Groq API, sentence-transformers, FAISS, OCR toolchain
+- Data: Supabase Postgres + Supabase Storage
 
-### Prerequisites
-- **Node.js** 18+ and npm
-- **Python** 3.10+
-- **PostgreSQL** (via Supabase or local)
-- **Groq API Key** ([Get one here](https://console.groq.com))
+## Prerequisites
 
-### Frontend Setup
+- Node.js 18+
+- Python 3.10+
+- Supabase project (hosted or local via Supabase CLI)
+- Groq API key
+
+Optional but recommended:
+
+- Docker (for safer multi-language code execution in coding mentor)
+- System OCR dependencies for resume parsing:
+  - `tesseract-ocr`
+  - `poppler-utils` (required by `pdf2image`)
+
+## Quick Start
+
+### 1) Clone and install frontend dependencies
 
 ```bash
-# Install dependencies
+git clone https://github.com/vinaykr8807/Edunovas.git
+cd Edunovas
 npm install
-
-# Start development server
-npm run dev
 ```
 
-### Backend Setup
+### 2) Setup backend environment
 
 ```bash
 cd backend
-
-# Create virtual environment
-python -m venv venv
-source venv/bin/activate  # Windows: venv\Scripts\activate
-
-# Install dependencies
+python -m venv .venv
+source .venv/bin/activate   # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
+```
 
-# Create .env file
-cat > .env << EOF
-DATABASE_URL=postgresql://user:password@localhost:5432/edunovas
-GROQ_API_KEY=your_groq_api_key_here
-JWT_SECRET_KEY=your_secret_key_here
-EOF
+Create `backend/.env`:
 
-# Initialize database
-python init_db.py
+```env
+# Required
+GROQ_API_KEY=your_groq_key
+NEXT_PUBLIC_SUPABASE_URL=https://<project-ref>.supabase.co
+SUPABASE_SERVICE_ROLE_KEY=your_service_role_key
+# or use SUPABASE_ANON_KEY if running with limited access
 
-# Start server
+# Optional / recommended
+DATABASE_URL=postgresql://postgres:password@host:5432/postgres
+JWT_SECRET_KEY=replace_with_strong_secret
+OLLAMA_HOST=http://127.0.0.1:11434
+OLLAMA_MODEL=gemma3:latest
+PEXELS_API_KEY=your_pexels_key
+SMTP_HOST=smtp.gmail.com
+SMTP_PORT=587
+SMTP_USER=your_email
+SMTP_PASS=your_app_password
+FROM_EMAIL=notifications@edunovas.ai
+GITHUB_TOKEN=optional_for_codex_reference_search
+```
+
+### 3) Database and migrations
+
+Use Supabase migrations in `supabase/migrations`.
+
+If you use Supabase CLI locally:
+
+```bash
+supabase start
+supabase db reset
+```
+
+Notes:
+
+- `backend/init_db.py` contains hardcoded credentials and destructive `DROP TABLE` statements.
+- Do not run `backend/init_db.py` in production environments.
+
+### 4) Run backend
+
+From `backend/`:
+
+```bash
 uvicorn main:app --reload --host 0.0.0.0 --port 8000
 ```
 
----
+Health check:
 
-## 🔧 Configuration
-
-### Environment Variables
-
-**Backend (.env)**
-```env
-DATABASE_URL=postgresql://user:password@host:port/database
-GROQ_API_KEY=gsk_xxxxxxxxxxxxx
-JWT_SECRET_KEY=your-secret-key
-OLLAMA_HOST=http://127.0.0.1:11434
-OLLAMA_MODEL=gemma3:latest
+```bash
+curl http://127.0.0.1:8000/health
 ```
 
-**Frontend**
-- API endpoint configured in component files (default: `http://127.0.0.1:8000`)
+### 5) Run frontend
 
----
+From repository root:
 
-## 📊 Database Schema
+```bash
+npm run dev
+```
 
-**Core Tables:**
-- `users` - Authentication & roles
-- `student_profiles` - Academic information
-- `user_progress` - XP, levels, badges
-- `chat_messages` - Conversation history
-- `quiz_history` - Assessment results
-- `interview_history` - Mock interview scores
-- `coding_errors` - Mistake patterns
-- `domain_stats` - Interaction tracking
+Frontend runs on Vite default port (`5173`).
 
----
+## Core Modules
 
-## 🎨 Tech Stack
+- Interview Coach: resume deep analysis, skill-gap mapping, interview plan and evaluation
+- Quiz Master: quiz generation, explanation evaluation, feedback, confidence-aware progress updates
+- Coding Mentor: code analysis + optional execution sandbox across languages
+- Career Pathfinder: role/city-specific job discovery, suitability scoring, report generation
+- Teacher: topic explanation, market skills, beginner guide, notes PDF generation/storage
+- Analytics/Admin: student metrics, domain distribution, readiness and optimization aggregates
 
-### Frontend
-- **React 19** with TypeScript
-- **React Router** for navigation
-- **Vite** for blazing-fast builds
-- **Custom CSS** with glassmorphism design
+## API Surface (Selected)
 
-### Backend
-- **FastAPI** - High-performance API framework
-- **SQLAlchemy** - ORM with PostgreSQL
-- **Groq AI** - LLM inference (Llama 3.3 70B)
-- **FAISS** - Vector similarity search
-- **PyTesseract** - OCR for resume parsing
-- **DuckDuckGo Search** - Market research
+Authentication:
 
-### Infrastructure
-- **Supabase** - PostgreSQL hosting
-- **JWT** - Secure authentication
-- **bcrypt** - Password hashing
+- `POST /signup`
+- `POST /login`
 
----
+Student profile and progress:
 
-## 🎯 API Endpoints
+- `POST /save-profile`
+- `GET /student/profile`
+- `GET /student/progress`
+- `GET /performance-stats`
 
-### Authentication
-- `POST /signup` - User registration
-- `POST /login` - User authentication
+Assistant/core:
 
-### Student
-- `POST /chat` - AI conversation
-- `POST /save-profile` - Update profile
-- `GET /student/progress` - Fetch progress
-- `GET /performance-stats` - Analytics
+- `POST /chat`
+- `POST /upload-resume`
+- `POST /analyze-resume`
+- `POST /career-pathfinder`
+- `GET /generate-quiz`
+- `POST /submit-quiz`
+- `POST /quiz-feedback`
+- `POST /analyze-code`
+- `POST /execute-code`
 
-### Learning Modules
-- `POST /upload-resume` - Resume OCR
-- `POST /analyze-resume` - Deep analysis
-- `GET /generate-quiz` - Create quiz
-- `POST /submit-quiz` - Submit answers
-- `POST /analyze-code` - Code review
+Teacher/coach:
 
-### Admin
-- `GET /admin/analytics` - Platform metrics
+- `POST /teacher/explain`
+- `POST /teacher/generate-notes`
+- `GET /student/notes`
+- `POST /teacher/market-skills`
+- `POST /coach/beginner-guide`
+- `POST /coach/mock-interview/plan`
+- `POST /coach/mock-interview/question`
+- `POST /coach/mock-interview/evaluate`
 
----
+Admin:
 
-## 🎮 Gamification System
+- `GET /admin/analytics`
+- `GET /admin/student-performance`
+- `GET /admin/market-insights`
+- `GET /admin/historical-market-overview`
+- `GET /admin/risk-overview`
 
-| Activity | XP Points |
-|----------|-----------|
-| Quiz Complete | 50 |
-| Interview Complete | 100 |
-| Code Analysis | 25 |
-| Daily Streak | 10 |
-| Profile Update | 20 |
+Jobs agent:
 
-**Level System:** Every 500 XP = 1 Level Up
+- `POST /job-agent/subscribe`
+- `POST /job-agent/run-crawler`
 
----
+CodeX:
 
-## 🔒 Security
+- `GET /codex/problems`
+- `POST /codex/check-alignment`
+- `POST /codex/analyze-lines`
+- `POST /codex/references`
+- `POST /codex/generate-tests`
+- `POST /codex/enhance`
+- `POST /codex/compare`
 
-- JWT-based authentication
-- Password hashing with bcrypt (72-byte limit)
-- Role-based access control (Student/Admin)
-- Protected routes with authentication guards
-- Environment variable isolation
+## Environment and Deployment Notes
 
----
+- Frontend API URLs are currently hardcoded in several places to `http://127.0.0.1:8000`.
+- Supabase Storage buckets used by backend include at least:
+  - `resumes`
+  - `student-notes`
+- A background task in `backend/main.py` runs a job crawler every 24 hours while the server is up.
+- Coding execution falls back to local runtime if Docker is unavailable.
 
-## 📈 Performance
+## Data and Large Files
 
-- **Frontend:** Vite HMR for instant updates
-- **Backend:** FastAPI async support
-- **Database:** Indexed queries with SQLAlchemy
-- **AI:** Groq's optimized LLM inference
-- **Caching:** RAG knowledge base in-memory
+- The repository includes sizeable datasets under `backend/JOBS DATASET` and `backend/Codex`.
+- GitHub rejects files larger than 100 MB in normal Git history.
+- If you need to version very large datasets, use Git LFS:
+  - https://git-lfs.github.com/
 
----
+## Security Notes
 
-## 🤝 Contributing
+- Never commit real API keys, service-role keys, or SMTP credentials.
+- Rotate any secrets that were previously exposed.
+- Review CORS, auth policies, and RLS before production deployment.
 
-1. Fork the repository
-2. Create feature branch (`git checkout -b feature/AmazingFeature`)
-3. Commit changes (`git commit -m 'Add AmazingFeature'`)
-4. Push to branch (`git push origin feature/AmazingFeature`)
-5. Open Pull Request
+## Development Workflow
 
----
+- Frontend: `npm run dev`, `npm run build`, `npm run lint`
+- Backend: `uvicorn main:app --reload`
+- Contribution guidelines: see [CONTRIBUTING.md](CONTRIBUTING.md)
 
-## 📝 License
+## License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
----
-
-## 👥 Authors
-
-**Edunovas Team**
-- Platform Architecture & Development
-- AI Integration & Optimization
-
----
-
-## 🙏 Acknowledgments
-
-- **Groq** - Lightning-fast LLM inference
-- **Supabase** - PostgreSQL hosting
-- **React Team** - Amazing frontend framework
-- **FastAPI** - Modern Python web framework
-
----
-
-## 📞 Support
-
-For issues and questions:
-- 📧 Email: support@edunovas.ai
-- 🐛 Issues: [GitHub Issues](https://github.com/vinaykr8807/Edunovas/issues)
-- 📖 Docs: [Documentation](https://github.com/vinaykr8807/Edunovas/wiki)
-
----
-
-<div align="center">
-
-**Built with ❤️ by the Edunovas Team**
-
-⭐ Star us on GitHub — it motivates us a lot!
-
-</div>
+Licensed under the MIT License. See [LICENSE](LICENSE).
