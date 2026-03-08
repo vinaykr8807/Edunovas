@@ -1,0 +1,565 @@
+title,content,difficulty,num_of_lines,code_length,cyclomatic_complexity,readability
+Hello World,"public class HelloWorld {
+    public static void main(String[] args) {
+        System.out.println(""Hello, World!"");
+    }
+}",Beginner,5,123,1,9.7
+Factorial Recursive,"public class Factorial {
+    public static int factorial(int n) {
+        if (n <= 1) return 1;
+        return n * factorial(n - 1);
+    }
+}",Beginner,6,140,2,9.4
+Fibonacci Series,"public class Fibonacci {
+    public static void printFibonacci(int n) {
+        int a = 0, b = 1;
+        for (int i = 0; i < n; i++) {
+            System.out.print(a + "" "");
+            int temp = a + b; a = b; b = temp;
+        }
+    }
+}",Beginner,9,239,2,9.4
+Reverse String,"public class ReverseString {
+    public static String reverse(String s) {
+        return new StringBuilder(s).reverse().toString();
+    }
+}",Beginner,5,139,1,9.7
+Palindrome Check,"public class Palindrome {
+    public static boolean isPalindrome(String s) {
+        String rev = new StringBuilder(s).reverse().toString();
+        return s.equals(rev);
+    }
+}",Beginner,6,178,1,9.7
+Count Vowels,"public class CountVowels {
+    public static int countVowels(String s) {
+        int count = 0;
+        for (char c : s.toLowerCase().toCharArray())
+            if (""aeiou"".indexOf(c) >= 0) count++;
+        return count;
+    }
+}",Beginner,8,228,3,9.1
+FizzBuzz,"public class FizzBuzz {
+    public static void fizzBuzz(int n) {
+        for (int i = 1; i <= n; i++) {
+            if (i % 15 == 0)      System.out.println(""FizzBuzz"");
+            else if (i % 3 == 0)  System.out.println(""Fizz"");
+            else if (i % 5 == 0)  System.out.println(""Buzz"");
+            else                  System.out.println(i);
+        }
+    }
+}",Beginner,10,368,8,7.6
+Prime Number Check,"public class PrimeCheck {
+    public static boolean isPrime(int n) {
+        if (n < 2) return false;
+        for (int i = 2; i * i <= n; i++)
+            if (n % i == 0) return false;
+        return true;
+    }
+}",Beginner,8,213,4,8.8
+String Anagram Check,"import java.util.Arrays;
+public class AnagramCheck {
+    public static boolean isAnagram(String a, String b) {
+        char[] ca = a.toCharArray(); char[] cb = b.toCharArray();
+        Arrays.sort(ca); Arrays.sort(cb);
+        return Arrays.equals(ca, cb);
+    }
+}",Beginner,8,264,1,9.7
+Sum of Digits,"public class SumDigits {
+    public static int sumDigits(int n) {
+        int sum = 0;
+        while (n != 0) { sum += n % 10; n /= 10; }
+        return sum;
+    }
+}",Beginner,7,165,2,9.4
+Armstrong Number,"public class Armstrong {
+    public static boolean isArmstrong(int n) {
+        int orig = n, sum = 0, digits = String.valueOf(n).length();
+        while (n > 0) { sum += Math.pow(n % 10, digits); n /= 10; }
+        return sum == orig;
+    }
+}",Beginner,7,243,2,9.4
+Power of Two,"public class PowerOfTwo {
+    public static boolean isPowerOfTwo(int n) {
+        return n > 0 && (n & (n - 1)) == 0;
+    }
+}",Beginner,5,125,1,9.7
+Find Min Max,"public class MinMax {
+    public static int[] minMax(int[] arr) {
+        int min = arr[0], max = arr[0];
+        for (int x : arr) { if (x < min) min = x; if (x > max) max = x; }
+        return new int[]{min, max};
+    }
+}",Beginner,7,223,4,8.8
+Swap Two Numbers,"public class Swap {
+    public static int[] swap(int a, int b) {
+        a = a ^ b; b = a ^ b; a = a ^ b;
+        return new int[]{a, b};
+    }
+}",Beginner,6,145,1,9.7
+Temperature Converter,"public class TempConverter {
+    public static double celsiusToFahrenheit(double c) { return c * 9.0 / 5.0 + 32; }
+    public static double fahrenheitToCelsius(double f) { return (f - 32) * 5.0 / 9.0; }
+}",Beginner,4,204,1,9.7
+Count Words,"public class CountWords {
+    public static int countWords(String s) {
+        if (s == null || s.trim().isEmpty()) return 0;
+        return s.trim().split(""\s+"").length;
+    }
+}",Beginner,6,178,2,9.4
+Array Sum,"public class ArraySum {
+    public static int sum(int[] arr) {
+        int total = 0;
+        for (int x : arr) total += x;
+        return total;
+    }
+}",Beginner,7,153,2,9.4
+Leap Year Check,"public class LeapYear {
+    public static boolean isLeap(int year) {
+        return (year % 4 == 0 && year % 100 != 0) || (year % 400 == 0);
+    }
+}",Beginner,5,148,1,9.7
+String Contains Substring,"public class SubstringCheck {
+    public static boolean contains(String s, String sub) {
+        return s.contains(sub);
+    }
+}",Beginner,5,128,1,9.7
+Two Sum,"import java.util.HashMap;
+public class TwoSum {
+    public static int[] twoSum(int[] nums, int target) {
+        HashMap<Integer, Integer> map = new HashMap<>();
+        for (int i = 0; i < nums.length; i++) {
+            int comp = target - nums[i];
+            if (map.containsKey(comp)) return new int[]{map.get(comp), i};
+            map.put(nums[i], i);
+        }
+        return new int[]{};
+    }
+}",Intermediate,12,404,3,8.9
+Binary Search,"public class BinarySearch {
+    public static int binarySearch(int[] arr, int target) {
+        int lo = 0, hi = arr.length - 1;
+        while (lo <= hi) {
+            int mid = lo + (hi - lo) / 2;
+            if (arr[mid] == target) return mid;
+            else if (arr[mid] < target) lo = mid + 1;
+            else hi = mid - 1;
+        }
+        return -1;
+    }
+}",Intermediate,12,367,6,8.2
+Bubble Sort,"public class BubbleSort {
+    public static void sort(int[] arr) {
+        int n = arr.length;
+        for (int i = 0; i < n - 1; i++)
+            for (int j = 0; j < n - i - 1; j++)
+                if (arr[j] > arr[j + 1]) {
+                    int tmp = arr[j]; arr[j] = arr[j + 1]; arr[j + 1] = tmp;
+                }
+    }
+}",Intermediate,10,328,4,8.8
+Stack Implementation,"import java.util.ArrayList;
+public class Stack<T> {
+    private ArrayList<T> list = new ArrayList<>();
+    public void push(T item) { list.add(item); }
+    public T pop() { return list.remove(list.size() - 1); }
+    public T peek() { return list.get(list.size() - 1); }
+    public boolean isEmpty() { return list.isEmpty(); }
+    public int size() { return list.size(); }
+}",Intermediate,9,373,1,9.4
+Valid Parentheses,"import java.util.Stack;
+public class ValidParentheses {
+    public static boolean isValid(String s) {
+        Stack<Character> stack = new Stack<>();
+        for (char c : s.toCharArray()) {
+            if (c == '(' || c == '[' || c == '{') stack.push(c);
+            else {
+                if (stack.isEmpty()) return false;
+                char top = stack.pop();
+                if (c == ')' && top != '(') return false;
+                if (c == ']' && top != '[') return false;
+                if (c == '}' && top != '{') return false;
+            }
+        }
+        return stack.isEmpty();
+    }
+}",Intermediate,17,603,8,7.2
+Linked List,"public class LinkedList<T> {
+    private static class Node<T> { T data; Node<T> next; Node(T d) { data = d; } }
+    private Node<T> head;
+    public void add(T data) {
+        Node<T> node = new Node<>(data);
+        if (head == null) { head = node; return; }
+        Node<T> cur = head;
+        while (cur.next != null) cur = cur.next;
+        cur.next = node;
+    }
+    public void print() {
+        Node<T> cur = head;
+        while (cur != null) { System.out.print(cur.data + "" ""); cur = cur.next; }
+    }
+}",Intermediate,15,511,4,8.8
+Reverse Linked List,"public class ReverseLinkedList {
+    static class Node { int val; Node next; Node(int v) { val = v; } }
+    public static Node reverse(Node head) {
+        Node prev = null, cur = head;
+        while (cur != null) {
+            Node next = cur.next; cur.next = prev; prev = cur; cur = next;
+        }
+        return prev;
+    }
+}",Intermediate,10,329,2,9.4
+Queue Using Two Stacks,"import java.util.Stack;
+public class QueueUsingStacks {
+    Stack<Integer> inbox = new Stack<>(), outbox = new Stack<>();
+    public void enqueue(int val) { inbox.push(val); }
+    public int dequeue() {
+        if (outbox.isEmpty()) while (!inbox.isEmpty()) outbox.push(inbox.pop());
+        return outbox.pop();
+    }
+}",Intermediate,9,320,3,9.0
+Max Subarray Kadane,"public class MaxSubarray {
+    public static int maxSubArray(int[] nums) {
+        int maxSum = nums[0], cur = nums[0];
+        for (int i = 1; i < nums.length; i++) {
+            cur = Math.max(nums[i], cur + nums[i]);
+            maxSum = Math.max(maxSum, cur);
+        }
+        return maxSum;
+    }
+}",Intermediate,10,304,2,9.4
+Selection Sort,"public class SelectionSort {
+    public static void sort(int[] arr) {
+        int n = arr.length;
+        for (int i = 0; i < n - 1; i++) {
+            int minIdx = i;
+            for (int j = i + 1; j < n; j++)
+                if (arr[j] < arr[minIdx]) minIdx = j;
+            int tmp = arr[minIdx]; arr[minIdx] = arr[i]; arr[i] = tmp;
+        }
+    }
+}",Intermediate,11,354,4,8.8
+Insertion Sort,"public class InsertionSort {
+    public static void sort(int[] arr) {
+        for (int i = 1; i < arr.length; i++) {
+            int key = arr[i], j = i - 1;
+            while (j >= 0 && arr[j] > key) { arr[j + 1] = arr[j]; j--; }
+            arr[j + 1] = key;
+        }
+    }
+}",Intermediate,9,278,3,9.1
+HashMap Frequency Count,"import java.util.HashMap;
+public class FrequencyCount {
+    public static HashMap<Character, Integer> frequency(String s) {
+        HashMap<Character, Integer> map = new HashMap<>();
+        for (char c : s.toCharArray())
+            map.put(c, map.getOrDefault(c, 0) + 1);
+        return map;
+    }
+}",Intermediate,9,301,2,9.4
+String Compression,"public class StringCompression {
+    public static String compress(String s) {
+        StringBuilder sb = new StringBuilder();
+        int i = 0;
+        while (i < s.length()) {
+            char c = s.charAt(i); int count = 0;
+            while (i < s.length() && s.charAt(i) == c) { i++; count++; }
+            sb.append(c);
+            if (count > 1) sb.append(count);
+        }
+        return sb.length() < s.length() ? sb.toString() : s;
+    }
+}",Intermediate,13,450,4,8.8
+Matrix Transpose,"public class MatrixTranspose {
+    public static int[][] transpose(int[][] matrix) {
+        int rows = matrix.length, cols = matrix[0].length;
+        int[][] result = new int[cols][rows];
+        for (int i = 0; i < rows; i++)
+            for (int j = 0; j < cols; j++)
+                result[j][i] = matrix[i][j];
+        return result;
+    }
+}",Intermediate,10,347,3,9.1
+Rotate Array,"public class RotateArray {
+    public static void rotate(int[] nums, int k) {
+        int n = nums.length; k %= n;
+        reverse(nums, 0, n - 1); reverse(nums, 0, k - 1); reverse(nums, k, n - 1);
+    }
+    private static void reverse(int[] arr, int lo, int hi) {
+        while (lo < hi) { int t = arr[lo]; arr[lo++] = arr[hi]; arr[hi--] = t; }
+    }
+}",Intermediate,9,353,2,9.4
+Count Occurrences,"public class CountOccurrences {
+    public static int count(int[] arr, int target) {
+        int cnt = 0;
+        for (int x : arr) if (x == target) cnt++;
+        return cnt;
+    }
+}",Intermediate,7,183,3,9.1
+Find Duplicates,"import java.util.*;
+public class FindDuplicates {
+    public static List<Integer> findDuplicates(int[] nums) {
+        Set<Integer> seen = new HashSet<>();
+        List<Integer> result = new ArrayList<>();
+        for (int n : nums) if (!seen.add(n)) result.add(n);
+        return result;
+    }
+}",Intermediate,9,296,3,9.0
+Two Pointers Sum,"public class TwoPointers {
+    public static int[] twoPointerSum(int[] sorted, int target) {
+        int lo = 0, hi = sorted.length - 1;
+        while (lo < hi) {
+            int sum = sorted[lo] + sorted[hi];
+            if (sum == target) return new int[]{lo, hi};
+            else if (sum < target) lo++;
+            else hi--;
+        }
+        return new int[]{};
+    }
+}",Intermediate,12,376,6,8.2
+Iterator Pattern,"import java.util.Iterator;
+public class NumberRange implements Iterable<Integer> {
+    private int start, end;
+    public NumberRange(int s, int e) { start = s; end = e; }
+    public Iterator<Integer> iterator() {
+        return new Iterator<>() {
+            int cur = start;
+            public boolean hasNext() { return cur <= end; }
+            public Integer next() { return cur++; }
+        };
+    }
+}",Intermediate,12,407,1,9.6
+Builder Pattern,"public class Person {
+    private String name; private int age; private String email;
+    private Person() {}
+    public static class Builder {
+        private Person p = new Person();
+        public Builder name(String n) { p.name = n; return this; }
+        public Builder age(int a) { p.age = a; return this; }
+        public Builder email(String e) { p.email = e; return this; }
+        public Person build() { return p; }
+    }
+    public String toString() { return name + "","" + age + "","" + email; }
+}",Intermediate,12,506,1,9.7
+Merge Sort,"public class MergeSort {
+    public static void sort(int[] arr, int l, int r) {
+        if (l < r) {
+            int mid = (l + r) / 2;
+            sort(arr, l, mid); sort(arr, mid + 1, r); merge(arr, l, mid, r);
+        }
+    }
+    private static void merge(int[] arr, int l, int mid, int r) {
+        int n1 = mid - l + 1, n2 = r - mid;
+        int[] L = new int[n1], R = new int[n2];
+        for (int i = 0; i < n1; i++) L[i] = arr[l + i];
+        for (int j = 0; j < n2; j++) R[j] = arr[mid + 1 + j];
+        int i = 0, j = 0, k = l;
+        while (i < n1 && j < n2) arr[k++] = L[i] <= R[j] ? L[i++] : R[j++];
+        while (i < n1) arr[k++] = L[i++];
+        while (j < n2) arr[k++] = R[j++];
+    }
+}",Advanced,18,705,7,7.9
+Quick Sort,"public class QuickSort {
+    public static void sort(int[] arr, int lo, int hi) {
+        if (lo < hi) {
+            int p = partition(arr, lo, hi);
+            sort(arr, lo, p - 1); sort(arr, p + 1, hi);
+        }
+    }
+    private static int partition(int[] arr, int lo, int hi) {
+        int pivot = arr[hi], i = lo - 1;
+        for (int j = lo; j < hi; j++)
+            if (arr[j] <= pivot) { i++; int t = arr[i]; arr[i] = arr[j]; arr[j] = t; }
+        int t = arr[i + 1]; arr[i + 1] = arr[hi]; arr[hi] = t;
+        return i + 1;
+    }
+}",Advanced,15,541,4,8.8
+Binary Tree Inorder,"public class BinaryTree {
+    static class Node { int val; Node left, right; Node(int v) { val = v; } }
+    public static void inorder(Node root) {
+        if (root == null) return;
+        inorder(root.left);
+        System.out.print(root.val + "" "");
+        inorder(root.right);
+    }
+}",Advanced,9,288,2,9.4
+Longest Common Subsequence,"public class LCS {
+    public static int lcs(String a, String b) {
+        int m = a.length(), n = b.length();
+        int[][] dp = new int[m + 1][n + 1];
+        for (int i = 1; i <= m; i++)
+            for (int j = 1; j <= n; j++)
+                dp[i][j] = a.charAt(i-1) == b.charAt(j-1)
+                    ? dp[i-1][j-1] + 1
+                    : Math.max(dp[i-1][j], dp[i][j-1]);
+        return dp[m][n];
+    }
+}",Advanced,12,418,3,9.1
+Knapsack 0-1,"public class Knapsack {
+    public static int knapsack(int[] weights, int[] values, int capacity) {
+        int n = weights.length;
+        int[][] dp = new int[n + 1][capacity + 1];
+        for (int i = 1; i <= n; i++)
+            for (int w = 0; w <= capacity; w++) {
+                dp[i][w] = dp[i-1][w];
+                if (weights[i-1] <= w)
+                    dp[i][w] = Math.max(dp[i][w], dp[i-1][w - weights[i-1]] + values[i-1]);
+            }
+        return dp[n][capacity];
+    }
+}",Advanced,13,493,4,8.8
+Depth First Search,"import java.util.*;
+public class DFS {
+    public static void dfs(Map<Integer, List<Integer>> graph, int start) {
+        Set<Integer> visited = new HashSet<>();
+        Stack<Integer> stack = new Stack<>();
+        stack.push(start);
+        while (!stack.isEmpty()) {
+            int node = stack.pop();
+            if (visited.contains(node)) continue;
+            visited.add(node); System.out.print(node + "" "");
+            for (int neighbor : graph.getOrDefault(node, Collections.emptyList()))
+                if (!visited.contains(neighbor)) stack.push(neighbor);
+        }
+    }
+}",Advanced,15,588,5,6.8
+Breadth First Search,"import java.util.*;
+public class BFS {
+    public static List<Integer> bfs(Map<Integer, List<Integer>> graph, int start) {
+        List<Integer> order = new ArrayList<>();
+        Set<Integer> visited = new HashSet<>();
+        Queue<Integer> queue = new LinkedList<>();
+        queue.add(start); visited.add(start);
+        while (!queue.isEmpty()) {
+            int node = queue.poll(); order.add(node);
+            for (int nb : graph.getOrDefault(node, Collections.emptyList()))
+                if (!visited.contains(nb)) { visited.add(nb); queue.add(nb); }
+        }
+        return order;
+    }
+}",Advanced,15,601,4,7.4
+LRU Cache,"import java.util.*;
+public class LRUCache {
+    private int cap; private LinkedHashMap<Integer, Integer> map;
+    public LRUCache(int capacity) {
+        cap = capacity;
+        map = new LinkedHashMap<>(cap, 0.75f, true) {
+            protected boolean removeEldestEntry(Map.Entry e) { return size() > cap; }
+        };
+    }
+    public int get(int key) { return map.getOrDefault(key, -1); }
+    public void put(int key, int value) { map.put(key, value); }
+}",Advanced,12,459,1,8.9
+Trie Data Structure,"import java.util.HashMap;
+public class Trie {
+    private HashMap<Character, Trie> children = new HashMap<>();
+    private boolean isEnd = false;
+    public void insert(String word) {
+        Trie node = this;
+        for (char c : word.toCharArray()) {
+            node.children.putIfAbsent(c, new Trie());
+            node = node.children.get(c);
+        }
+        node.isEnd = true;
+    }
+    public boolean search(String word) {
+        Trie node = this;
+        for (char c : word.toCharArray()) {
+            if (!node.children.containsKey(c)) return false;
+            node = node.children.get(c);
+        }
+        return node.isEnd;
+    }
+}",Advanced,21,649,4,7.9
+Graph Cycle Detection,"import java.util.*;
+public class CycleDetection {
+    public static boolean hasCycle(int n, List<List<Integer>> adj) {
+        int[] color = new int[n]; // 0=white,1=gray,2=black
+        for (int i = 0; i < n; i++)
+            if (color[i] == 0 && dfs(adj, color, i)) return true;
+        return false;
+    }
+    private static boolean dfs(List<List<Integer>> adj, int[] color, int u) {
+        color[u] = 1;
+        for (int v : adj.get(u)) {
+            if (color[v] == 1) return true;
+            if (color[v] == 0 && dfs(adj, color, v)) return true;
+        }
+        color[u] = 2; return false;
+    }
+}",Advanced,17,607,6,7.7
+Matrix Multiplication,"public class MatrixMul {
+    public static int[][] multiply(int[][] A, int[][] B) {
+        int m = A.length, n = B[0].length, k = B.length;
+        int[][] C = new int[m][n];
+        for (int i = 0; i < m; i++)
+            for (int j = 0; j < n; j++)
+                for (int p = 0; p < k; p++)
+                    C[i][j] += A[i][p] * B[p][j];
+        return C;
+    }
+}",Advanced,11,371,4,8.8
+Singleton Pattern,"public class Singleton {
+    private static volatile Singleton instance;
+    private Singleton() {}
+    public static Singleton getInstance() {
+        if (instance == null) {
+            synchronized (Singleton.class) {
+                if (instance == null) instance = new Singleton();
+            }
+        }
+        return instance;
+    }
+}",Advanced,12,343,3,9.1
+Observer Pattern,"import java.util.*;
+public class EventBus {
+    private Map<String, List<Runnable>> listeners = new HashMap<>();
+    public void on(String event, Runnable handler) {
+        listeners.computeIfAbsent(event, k -> new ArrayList<>()).add(handler);
+    }
+    public void emit(String event) {
+        listeners.getOrDefault(event, Collections.emptyList()).forEach(Runnable::run);
+    }
+}",Advanced,10,382,2,8.8
+Dijkstra Shortest Path,"import java.util.*;
+public class Dijkstra {
+    public static int[] dijkstra(int[][] graph, int src) {
+        int n = graph.length;
+        int[] dist = new int[n]; Arrays.fill(dist, Integer.MAX_VALUE); dist[src] = 0;
+        boolean[] visited = new boolean[n];
+        for (int i = 0; i < n - 1; i++) {
+            int u = -1;
+            for (int v = 0; v < n; v++)
+                if (!visited[v] && (u == -1 || dist[v] < dist[u])) u = v;
+            visited[u] = true;
+            for (int v = 0; v < n; v++)
+                if (!visited[v] && graph[u][v] != 0 && dist[u] != Integer.MAX_VALUE
+                        && dist[u] + graph[u][v] < dist[v])
+                    dist[v] = dist[u] + graph[u][v];
+        }
+        return dist;
+    }
+}",Advanced,19,749,6,7.9
+Heap Min Implementation,"import java.util.ArrayList;
+public class MinHeap {
+    private ArrayList<Integer> heap = new ArrayList<>();
+    public void insert(int val) {
+        heap.add(val); int i = heap.size() - 1;
+        while (i > 0 && heap.get((i-1)/2) > heap.get(i)) {
+            int p = (i-1)/2; int tmp = heap.get(p); heap.set(p, heap.get(i)); heap.set(i, tmp); i = p;
+        }
+    }
+    public int extractMin() {
+        int min = heap.get(0); int last = heap.remove(heap.size()-1);
+        if (!heap.isEmpty()) { heap.set(0, last); heapifyDown(0); }
+        return min;
+    }
+    private void heapifyDown(int i) {
+        int n = heap.size(), l = 2*i+1, r = 2*i+2, smallest = i;
+        if (l < n && heap.get(l) < heap.get(smallest)) smallest = l;
+        if (r < n && heap.get(r) < heap.get(smallest)) smallest = r;
+        if (smallest != i) {
+            int tmp = heap.get(i); heap.set(i, heap.get(smallest)); heap.set(smallest, tmp);
+            heapifyDown(smallest);
+        }
+    }
+}",Advanced,24,977,6,7.3

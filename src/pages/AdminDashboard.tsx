@@ -6,7 +6,9 @@ interface Analytics {
     total_xp: number;
     total_interaction_hits: number;
     total_interviews: number;
+    total_optimizations: number;
     avg_readiness_score: number;
+    avg_optimization_score: number;
     domain_distribution: Record<string, number>;
     top_skills: { name: string; count: number }[];
 }
@@ -26,6 +28,8 @@ interface StudentPerf {
     latest_readiness: number | null;
     avg_readiness: number | null;
     last_interview_role: string | null;
+    code_optimizations_done: number;
+    avg_optimization_score: number | null;
 }
 
 export const AdminDashboard: React.FC = () => {
@@ -110,6 +114,7 @@ export const AdminDashboard: React.FC = () => {
                     { label: 'TOPICS COMPLETED', value: data?.total_interaction_hits ?? 0, icon: '✅', color: 'var(--accent-green)' },
                     { label: 'INTERVIEW SESSIONS', value: data?.total_interviews ?? 0, icon: '🎤', color: 'var(--primary-500)' },
                     { label: 'AVG READINESS SCORE', value: data?.avg_readiness_score ? `${data.avg_readiness_score}%` : '—', icon: '🎯', color: 'var(--accent-teal)' },
+                    { label: 'AVG CODE OPTIMIZATION', value: data?.avg_optimization_score ? `${data.avg_optimization_score}%` : '—', icon: '⚡', color: '#c084fc' },
                 ].map(stat => (
                     <div key={stat.label} className="glass-card" style={{ padding: '1.25rem' }}>
                         <div className="flex items-center gap-sm" style={{ marginBottom: '0.75rem' }}>
@@ -225,6 +230,7 @@ export const AdminDashboard: React.FC = () => {
                                 { icon: '📱', text: `${data?.total_students ?? 0} registered students on the platform` },
                                 { icon: '✅', text: `${data?.total_interaction_hits ?? 0} subtopics completed via AI Teacher` },
                                 { icon: '🎤', text: `${data?.total_interviews ?? 0} Interview Coach sessions completed` },
+                                { icon: '✨', text: `${data?.total_optimizations ?? 0} AI Code Optimizations requested` },
                                 { icon: '⚡', text: `${data?.total_xp?.toLocaleString() ?? 0} total XP earned by all students` },
                             ].map((item, i) => (
                                 <div key={i} className="flex items-center gap-md">
@@ -379,6 +385,23 @@ export const AdminDashboard: React.FC = () => {
                                                                     Target: <em>{student.last_interview_role}</em>
                                                                 </p>
                                                             )}
+                                                        </div>
+                                                    </div>
+
+                                                    {/* Code Mentorship */}
+                                                    <div style={{ padding: '1rem', background: 'rgba(168,85,247,0.04)', borderRadius: '12px', border: '1px solid rgba(168,85,247,0.12)' }}>
+                                                        <p style={{ fontSize: '0.72rem', fontWeight: 800, color: '#c084fc', marginBottom: '0.75rem', textTransform: 'uppercase' }}>💻 Coding Mentor</p>
+                                                        <div className="flex-col gap-xs">
+                                                            <div className="flex justify-between">
+                                                                <span style={{ fontSize: '0.82rem', color: 'var(--text-secondary)' }}>AI Optimizations</span>
+                                                                <strong style={{ color: 'var(--text-primary)' }}>{student.code_optimizations_done}</strong>
+                                                            </div>
+                                                            <div className="flex justify-between">
+                                                                <span style={{ fontSize: '0.82rem', color: 'var(--text-secondary)' }}>Avg Improve Score</span>
+                                                                <strong style={{ color: student.avg_optimization_score! >= 70 ? 'var(--accent-green)' : 'var(--accent-orange)' }}>
+                                                                    {student.avg_optimization_score != null ? `${student.avg_optimization_score}%` : '—'}
+                                                                </strong>
+                                                            </div>
                                                         </div>
                                                     </div>
 

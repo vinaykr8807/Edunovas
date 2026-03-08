@@ -20,14 +20,15 @@ export const ProfileDialog: React.FC<ProfileDialogProps> = ({ onSave, onClose, t
 
     const degrees = ["B.Tech", "BCA", "B.Sc", "M.Tech", "M.Sc", "MCA"];
     const domains = [
-        "AI & Machine Learning",
-        "Cyber Security",
         "Full Stack Development",
+        "Generative AI & Machine Learning",
+        "Cyber Security",
+        "DevOps & Cloud Engineering",
+        "Cloud Solutions Architecture",
         "UI/UX Design",
-        "Cloud Computing",
-        "Data Science",
-        "Mobile App Development",
-        "DevOps"
+        "Core CS & Algorithms",
+        "Data Engineering & MLOps",
+        "Quantum Computing"
     ];
 
     const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {

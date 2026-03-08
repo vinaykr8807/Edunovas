@@ -75,11 +75,18 @@ Return ONLY valid JSON, no markdown, no explanation."""
 
 def explain_subtopic(topic: str, subtopic: str, domain: str,
                      has_doubt: bool = False, doubt_text: str = None) -> dict:
-    """Generate a Groq-powered explanation for a subtopic."""
+    """Generate a Groq-powered explanation for a subtopic with RAG from DuckDuckGo and Mermaid support."""
+    from services.rag_service import generate_rag_context
+    
+    rag_context = generate_rag_context(topic, subtopic, domain)
+    context_injection = ""
+    if rag_context:
+        context_injection = f"\n\nHere is some real-time extracted context from the web to help you:\n{rag_context}\n\nUse this context to provide an extremely detailed, context-aware explanation that scales from beginner to advanced.\n"
+
     if has_doubt and doubt_text:
         prompt = f"""You are an expert {domain} tutor. A student is studying "{subtopic}" under "{topic}".
 They have this specific doubt: "{doubt_text}"
-
+{context_injection}
 Provide a clear, structured response with:
 1. Direct answer to their doubt
 2. A concrete example
@@ -88,36 +95,52 @@ Provide a clear, structured response with:
 
 Format in clear sections with headers. Be concise, practical, and encouraging."""
     else:
-        prompt = f"""You are an expert {domain} tutor teaching "{subtopic}" (part of "{topic}").
+        prompt = f"""You are a master {domain} tutor and highly experienced industry expert teaching "{subtopic}" (part of "{topic}").
+{context_injection}
+Provide an extremely deep, master-level explanation of this topic. Structure your response dynamically based on what best suits the topic, but ensure it scales from beginner-friendly intuition (so a novice can understand) to advanced, expert-level edge cases and real-world system design.
 
-Create a comprehensive but student-friendly explanation with these sections:
-## 📌 Core Concept
-(2-3 sentences explaining what this is and why it matters)
+Use professional formatting with clear markdown headers. Your response should naturally adapt to the specific nature of this subtopic, but could broadly hit these points:
+## 📌 Beginner Intuition & Core Concept
+(What is it in simple terms? Why was it invented?)
 
-## 🔑 Key Points
-(4-6 bullet points of the most important things to remember)
+## ⚙️ How it Works Under the Hood
+(The detailed mechanics, math, or logic behind it)
 
-## 💡 Real-World Example
-(A practical, relatable example that makes the concept click)
+## 💻 Technical Syntax & Practical Examples
+(Code snippets, configuration setups, or formulas)
 
-## 📊 Quick Reference Table
-| Term | Meaning |
-|------|---------|
-(3-5 rows of key terms and their meanings)
+## 🗺️ Visual Architecture
+(Provide a D2 diagram code block starting with ` ```d2 ` to visualize the architecture, flow, or system design. 
+D2 is much more powerful than Mermaid. Use this syntax:
+1. Connections: `User -> API: request`
+2. Containers: `Backend {{ label: "Server Side"; Auth -> Database }}`
+3. Shapes: `Cloud: {{ shape: cloud }}`
+4. Styling: Use simple labels and clear connections. Each statement MUST be on its own line.)
 
-## ✅ What to Practice Next
-(2-3 specific exercises or mini-projects to reinforce this topic)
+## 🚀 Advanced Use Cases & System Design
+(Where is this used in large-scale modern systems? What are its limits/edge cases?)
 
-Be encouraging, precise, and use simple language. The student is a university-level engineering student."""
+## ⚠️ Common Pitfalls & Best Practices
+(What do experts know that beginners do not?)
+
+Be authoritative, precise, and highly engaging. adapt the flow to deeply explain this specific topic while scaling from beginner concepts to advanced applications."""
 
     try:
         response = client.chat.completions.create(
             model="llama-3.3-70b-versatile",
             messages=[{"role": "user", "content": prompt}],
-            temperature=0.5,
-            max_tokens=1200
+            temperature=0.7,
+            max_tokens=3000
         )
         explanation = response.choices[0].message.content.strip()
+
+        return {
+            "explanation": explanation,
+            "topic": topic,
+            "subtopic": subtopic,
+            "domain": domain
+        }
+
         return {
             "explanation": explanation,
             "topic": topic,
@@ -134,10 +157,16 @@ Be encouraging, precise, and use simple language. The student is a university-le
 
 
 def generate_topic_notes_pdf(topic: str, subtopic: str, domain: str) -> io.BytesIO:
-    """Generate professional PDF notes for a subtopic using Groq content + ReportLab."""
+    """Generate professional PDF notes for a subtopic using Groq content + ReportLab, enhanced by RAG."""
+    from services.rag_service import generate_rag_context
+    rag_context = generate_rag_context(topic, subtopic, domain)
+    context_injection = ""
+    if rag_context:
+        context_injection = f"\n\nHere is some real-time extracted context from the web to help you:\n{rag_context}\n\nUse this context to accurately enrich the generated notes, scaling from fundamental definitions to advanced applications.\n"
+
     # 1. Get content from Groq
     prompt = f"""You are an expert technical educator creating professional study notes for "{subtopic}" ({topic} — {domain}).
-
+{context_injection}
 Generate structured notes with these sections in JSON:
 {{
   "summary": "2-3 sentence overview of the subtopic",
@@ -159,13 +188,19 @@ Return ONLY valid JSON."""
             model="llama-3.3-70b-versatile",
             messages=[{"role": "user", "content": prompt}],
             temperature=0.3,
-            max_tokens=1000
+            max_tokens=3500,
+            response_format={"type": "json_object"}
         )
         raw = response.choices[0].message.content.strip()
         data = _parse_groq_json(raw)
-    except Exception:
+    except Exception as e:
+        print(f"pdf generation groq error: {e}")
+        try:
+            print(f"raw output was: {raw[:500]}...")
+        except:
+            pass
         data = {
-            "summary": f"Professional notes for {subtopic} in {topic} ({domain}).",
+            "summary": f"FALLBACK TRIGGERED! Exception details: {str(e)}",
             "key_concepts": ["Core concept 1", "Core concept 2", "Core concept 3"],
             "table_data": [{"term": "Key Term", "definition": "Definition", "example": "Example"}],
             "code_example": "",
@@ -257,9 +292,11 @@ Return ONLY valid JSON."""
         story.append(Paragraph("💻 Code / Pseudocode Example", section_style))
         # Strip markdown code fences from code example itself
         import re as _re
+        import html
         code = _re.sub(r'^```\w*\s*', '', code)
         code = _re.sub(r'\s*```$', '', code)
-        story.append(Paragraph(code.replace('\n', '<br/>'), code_style))
+        code_escaped = html.escape(code).replace('\n', '<br/>').replace(' ', '&nbsp;')
+        story.append(Paragraph(code_escaped, code_style))
         story.append(Spacer(1, 10))
 
     # Common Mistakes

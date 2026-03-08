@@ -479,3 +479,23 @@ option {
   padding-top: var(--spacing-2xl);
   padding-bottom: var(--spacing-2xl);
 }
+
+/* Hide stray Mermaid error SVGs injected globally into body */
+body > svg[id^="dmermaid-"],
+body > div[id^="dmermaid-"],
+body > svg[id^="mermaid-"] {
+  display: none !important;
+}
+
+.mermaid-loader {
+  width: 24px;
+  height: 24px;
+  border: 2px solid rgba(52, 160, 90, 0.2);
+  border-top-color: var(--primary-500);
+  border-radius: 50%;
+  animation: mermaid-spin 0.6s linear infinite;
+}
+
+@keyframes mermaid-spin {
+  to { transform: rotate(360deg); }
+}

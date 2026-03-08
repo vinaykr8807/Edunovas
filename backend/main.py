@@ -438,6 +438,15 @@ def get_analytics():
     except Exception:
         total_interviews = 0
         avg_readiness = 0
+        
+    # Code Optimization Avg
+    try:
+        coding_rows = supabase.table('coding_sessions').select('optimization_score').execute()
+        total_optimizations = len(coding_rows.data)
+        avg_optimization = round(sum(r.get('optimization_score', 80) for r in coding_rows.data) / total_optimizations, 1) if total_optimizations else None
+    except Exception:
+        total_optimizations = 0
+        avg_optimization = None
 
     return {
         "total_students": len(users.data),
@@ -445,7 +454,9 @@ def get_analytics():
         "total_xp": total_xp,
         "total_interaction_hits": topics_completed,
         "total_interviews": total_interviews,
+        "total_optimizations": total_optimizations,
         "avg_readiness_score": avg_readiness,
+        "avg_optimization_score": avg_optimization,
         "domain_distribution": domain_dist,
         "top_skills": [{"name": k, "count": v} for k, v in top_skills]
     }
@@ -472,6 +483,10 @@ def get_student_performance():
             xp = prog.data[0].get('points', 0) if prog.data else 0
             level = prog.data[0].get('level', 1) if prog.data else 1
 
+            # Code optimizations
+            coding = supabase.table('coding_sessions').select('optimization_score').eq('user_id', uid).execute()
+            avg_opt = round(sum(c['optimization_score'] for c in coding.data) / len(coding.data), 1) if coding.data else None
+
             result.append({
                 "user_id": uid,
                 "email": user.get('email'),
@@ -487,6 +502,8 @@ def get_student_performance():
                 "latest_readiness": iv.data[0]['readiness_score'] if iv.data else None,
                 "avg_readiness": round(sum(s['readiness_score'] for s in iv.data) / len(iv.data), 1) if iv.data else None,
                 "last_interview_role": iv.data[0]['role'] if iv.data else None,
+                "code_optimizations_done": len(coding.data),
+                "avg_optimization_score": avg_opt
             })
         return {"students": result}
     except Exception as e:
@@ -600,6 +617,101 @@ def get_quiz_feedback(data: QuizFeedbackRequest):
 @app.post("/analyze-code")
 def analyze_code_endpoint(code: str = Form(...), language: str = Form("python")):
     return analyze_code_deep(code, language)
+
+@app.post("/execute-code")
+def execute_code_endpoint(code: str = Form(...), language: str = Form("python")):
+    from assistants.coding_mentor import execute_code_safely
+    return execute_code_safely(code, language)
+
+# ── CodeX Intelligence Endpoints ──────────────────────────────
+
+@app.get("/codex/problems")
+def get_problem_titles(language: str = "python"):
+    """Load problem titles from Codex CSV datasets."""
+    from services.codex_service import load_problem_titles
+    titles = load_problem_titles(language)
+    return {"language": language, "titles": titles, "count": len(titles)}
+
+@app.post("/codex/check-alignment")
+def check_code_alignment(problem_desc: str = Form(...), code: str = Form(...)):
+    """Use Groq AI to check if code is logically aligned with the problem."""
+    from services.codex_service import check_alignment
+    return check_alignment(problem_desc, code)
+
+@app.post("/codex/analyze-lines")
+def analyze_code_lines(code: str = Form(...), language: str = Form("python")):
+    """Per-line syntax and logic analysis."""
+    from services.codex_service import analyze_lines
+    line_results = analyze_lines(code, language)
+    ok = sum(1 for r in line_results if r['status'] == 'ok')
+    warn = sum(1 for r in line_results if r['status'] == 'warn')
+    errors = sum(1 for r in line_results if r['status'] == 'error')
+    return {"lines": line_results, "summary": {"ok": ok, "warn": warn, "errors": errors}}
+
+@app.post("/codex/references")
+def get_code_references(code: str = Form(...), language: str = Form("python")):
+    """Fetch real-world code references from GitHub and StackOverflow."""
+    from services.codex_service import fetch_references
+    return fetch_references(code, language)
+
+@app.post("/codex/generate-tests")
+def generate_code_tests(
+    code: str = Form(...),
+    problem_desc: str = Form(...),
+    language: str = Form("python")
+):
+    """Generate AI test cases for the given code and problem."""
+    from services.codex_service import generate_test_cases
+    tests = generate_test_cases(code, problem_desc, language)
+    return {"test_cases": tests, "count": len(tests)}
+
+@app.post("/codex/enhance")
+def enhance_user_code(
+    code: str = Form(...),
+    problem_desc: str = Form(...),
+    language: str = Form("python")
+):
+    """Enhance code using Groq AI with optional reference context."""
+    from services.codex_service import enhance_code_with_ai, fetch_references
+    refs_data = fetch_references(code, language)
+    all_refs = refs_data.get("github", []) + refs_data.get("stackoverflow", [])
+    return enhance_code_with_ai(code, problem_desc, language, all_refs)
+
+@app.post("/codex/compare")
+def compare_performance(
+    original_code: str = Form(...),
+    enhanced_code: str = Form(...),
+    language: str = Form("python"),
+    user_email: Optional[str] = Form(None)
+):
+    """Compare execution cost of original vs enhanced code and record optimization score."""
+    from assistants.coding_mentor import execute_code_safely
+    from datetime import datetime, timezone
+    
+    res_orig = execute_code_safely(original_code, language)
+    res_enh = execute_code_safely(enhanced_code, language)
+    
+    # Calculate optimization score (Time improvement %)
+    score = 0
+    if res_orig['execution_time'] > 0:
+        imp = ((res_orig['execution_time'] - res_enh['execution_time']) / res_orig['execution_time']) * 100
+        score = max(0, min(100, round(imp) + 50)) # baseline 50 if zero improvement
+    else:
+        score = 80 # default good score
+        
+    if user_email:
+        user_res = supabase.table('users').select('id').eq('email', user_email).execute()
+        if user_res.data:
+            supabase.table('coding_sessions').insert({
+                'user_id': user_res.data[0]['id'],
+                'optimization_score': score,
+                'created_at': datetime.now(timezone.utc).isoformat()
+            }).execute()
+            
+    return [
+        {'name': 'Original', 'time': res_orig['execution_time'], 'memory': res_orig['memory_used'], 'complexity': res_orig.get('complexity', 'O(n)'), 'success': res_orig['success']},
+        {'name': 'Enhanced', 'time': res_enh['execution_time'], 'memory': res_enh['memory_used'], 'complexity': res_enh.get('complexity', 'O(n)'), 'success': res_enh['success']}
+    ]
 
 @app.get("/performance-stats")
 def get_performance_stats(user_email: str):
@@ -768,9 +880,8 @@ def list_student_notes(user_email: str):
         print(f"List notes error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
-
-    print("Pre-Uvicorn Run...")
+if __name__ == "__main__":
     import uvicorn
-    print("Starting Uvicorn...")
+    print("🚀 Starting Edunovas Backend...")
     uvicorn.run(app, host="0.0.0.0", port=8000)
 

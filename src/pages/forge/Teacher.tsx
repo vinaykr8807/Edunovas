@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { CURRICULUM_DATA, type Roadmap } from '../../data/curriculumData';
 
 const getUser = () => JSON.parse(localStorage.getItem('edunovas_user') || '{}');
@@ -15,6 +15,70 @@ const saveProgress = async (payload: object) => {
     } catch { /* silent fail — progress saved locally via status state */ }
 };
 
+const DiagramBlock = ({ engine, code }: { engine: string, code: string }) => {
+    const [svg, setSvg] = useState('');
+    const [error, setError] = useState<string | null>(null);
+    const [loading, setLoading] = useState(false);
+
+    useEffect(() => {
+        if (!code) return;
+        
+        const renderDiagram = async () => {
+            setLoading(true);
+            setError(null);
+            try {
+                // Use Kroki API for robust, high-quality rendering
+                const response = await fetch(`https://kroki.io/${engine}/svg`, {
+                    method: 'POST',
+                    body: code,
+                });
+
+                if (!response.ok) {
+                    throw new Error(`Kroki error: ${response.statusText}`);
+                }
+
+                const svgText = await response.text();
+                setSvg(svgText);
+            } catch (e: any) {
+                console.error("Diagram render error", e);
+                setError(e?.message || 'Failed to render diagram');
+            } finally {
+                setLoading(false);
+            }
+        };
+
+        renderDiagram();
+    }, [code, engine]);
+
+    if (error) {
+        return (
+            <div style={{ color: '#f87171', background: 'rgba(239,68,68,0.05)', padding: '1rem', borderRadius: '8px', border: '1px dashed rgba(239,68,68,0.3)', fontSize: '0.8rem' }}>
+                <p style={{ fontWeight: 800, marginBottom: '0.5rem', color: '#b91c1c' }}>⚠️ Diagram Error</p>
+                <code style={{ fontSize: '0.7rem', opacity: 0.8 }}>{error}</code>
+            </div>
+        );
+    }
+
+    return (
+        <div style={{ background: '#ffffff', padding: '1.25rem', borderRadius: '12px', boxShadow: 'inset 0 0 20px rgba(0,0,0,0.01)', border: '1px solid rgba(52,160,90,0.05)', display: 'flex', justifyContent: 'center', width: '100%', minHeight: '80px', alignItems: 'center', position: 'relative' }}>
+            {loading && (
+                <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', background: 'rgba(255,255,255,0.7)', zIndex: 1, borderRadius: '12px', gap: '8px' }}>
+                    <div className="mermaid-loader" />
+                    <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', fontWeight: 600 }}>Rendering {engine.toUpperCase()}...</span>
+                </div>
+            )}
+            {svg ? (
+                <div 
+                    dangerouslySetInnerHTML={{ __html: svg }} 
+                    style={{ width: '100%', display: 'flex', justifyContent: 'center', overflowX: 'auto' }} 
+                    className="diagram-svg-container"
+                />
+            ) : !loading && (
+                <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Waiting for content...</span>
+            )}
+        </div>
+    );
+};
 
 interface TopicStatus {
     [key: string]: 'pending' | 'learning' | 'done';
@@ -29,6 +93,7 @@ interface Explanation {
 export const Teacher = () => {
     // Step 1: pick domain
     const [selectedRoadmap, setSelectedRoadmap] = useState<Roadmap | null>(null);
+    const [profileDomain, setProfileDomain] = useState<string | null>(null);
     // Step 2: pick phase
     const [phaseIdx, setPhaseIdx] = useState(0);
     // Step 3: active milestone
@@ -58,23 +123,37 @@ export const Teacher = () => {
         finally { setNotesLoading(false); }
     };
 
-    useState(() => {
-        // Run once on init
+    useEffect(() => {
+        loadSavedNotes();
+    }, []);
+
+    useEffect(() => {
         const user = getUser();
         if (!user.email) return;
-        fetch(`http://127.0.0.1:8000/student/profile?user_email=${encodeURIComponent(user.email)}`)
-            .then(r => r.json())
-            .then(data => {
+
+        const initFromProfile = async () => {
+            try {
+                const res = await fetch(`http://127.0.0.1:8000/student/profile?user_email=${encodeURIComponent(user.email)}`);
+                const data = await res.json();
+                
                 if (data.profile?.domain) {
+                    setProfileDomain(data.profile.domain);
                     const matched = CURRICULUM_DATA.find(r => r.title === data.profile.domain);
                     if (matched) {
                         console.log("Auto-selecting roadmap:", matched.title);
                         setSelectedRoadmap(matched);
+                        loadExplanation(matched, 0, 0);
                     }
                 }
-            })
-            .catch(err => console.error("Error loading profile:", err));
-    });
+            } catch (err) {
+                console.error("Error loading profile:", err);
+            }
+        };
+
+        if (!selectedRoadmap) {
+            initFromProfile();
+        }
+    }, [selectedRoadmap]);
 
     const phase = selectedRoadmap?.phases[phaseIdx];
     const milestone = phase?.milestones[milestoneIdx];
@@ -240,6 +319,47 @@ export const Teacher = () => {
         while (i < lines.length) {
             const line = lines[i];
 
+            // --- Diagram blocks (D2, Graphviz, Mermaid) ---
+            const diagMatch = line.trim().match(/^```(d2|graphviz|dot|mermaid|plantuml)/i);
+            if (diagMatch) {
+                const lang = diagMatch[1].toLowerCase();
+                const engine = (lang === 'dot') ? 'graphviz' : lang;
+                const codeLines: string[] = [];
+                i++;
+                while (i < lines.length && !lines[i].trim().startsWith('```')) {
+                    codeLines.push(lines[i]);
+                    i++;
+                }
+                const diagramCode = codeLines.join('\n');
+                elements.push(
+                    <div key={i} style={{ margin: '1.5rem 0', background: 'rgba(52,160,90,0.02)', padding: '1.25rem', borderRadius: '12px', border: '1px solid rgba(52,160,90,0.1)' }}>
+                        <div style={{ fontSize: '0.72rem', fontWeight: 800, color: 'var(--primary-600)', marginBottom: '0.85rem', textTransform: 'uppercase', letterSpacing: '0.8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            <span style={{ fontSize: '1rem' }}>📊</span> {engine.toUpperCase()} Architecture
+                        </div>
+                        <DiagramBlock engine={engine} code={diagramCode} />
+                    </div>
+                );
+                i++; continue;
+            }
+
+            // --- Code block (general) ---
+            if (line.trim().startsWith('```')) {
+                const codeLines: string[] = [];
+                i++;
+                while (i < lines.length && !lines[i].trim().startsWith('```')) {
+                    codeLines.push(lines[i]);
+                    i++;
+                }
+                elements.push(
+                    <pre key={i} style={{ margin: '1rem 0', background: 'rgba(0,0,0,0.4)', padding: '1rem', borderRadius: '8px', overflowX: 'auto', border: '1px solid rgba(255,255,255,0.05)' }}>
+                        <code style={{ fontSize: '0.85rem', color: '#e2e8f0', fontFamily: 'monospace' }}>
+                            {codeLines.join('\n')}
+                        </code>
+                    </pre>
+                );
+                i++; continue;
+            }
+
             // --- Headings ---
             if (line.startsWith('### ')) {
                 elements.push(<h5 key={i} style={{ color: 'var(--primary-600)', fontSize: '0.95rem', fontWeight: 800, margin: '1rem 0 0.4rem' }}>{renderInline(line.slice(4))}</h5>);
@@ -344,9 +464,17 @@ export const Teacher = () => {
             <div className="flex-col gap-xl fade-in">
                 <header>
                     <h2 style={{ fontSize: '2rem', fontWeight: 900 }}>🎓 AI Teacher</h2>
-                    <p style={{ color: 'var(--text-secondary)', marginTop: '0.5rem' }}>
+                    <p style={{ color: 'var(--text-secondary)', marginTop: '0.5rem', marginBottom: '1rem' }}>
                         Select your learning domain to begin your guided journey
                     </p>
+                    <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
+                        <span style={{ fontSize: '0.8rem', background: 'var(--bg-tertiary)', padding: '0.4rem 0.8rem', borderRadius: '6px', border: '1px solid var(--border-subtle)', color: 'var(--primary-400)' }}>
+                            📈 Track learner progress and recommend targeted lessons and quizzes
+                        </span>
+                        <span style={{ fontSize: '0.8rem', background: 'var(--bg-tertiary)', padding: '0.4rem 0.8rem', borderRadius: '6px', border: '1px solid var(--border-subtle)', color: 'var(--primary-400)' }}>
+                            🧠 Provide context-aware explanations at multiple levels (beginner to advanced)
+                        </span>
+                    </div>
                 </header>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: '1.25rem' }}>
                     {CURRICULUM_DATA.map(roadmap => (
@@ -368,9 +496,14 @@ export const Teacher = () => {
                                 background: `linear-gradient(135deg, ${roadmap.color}06 0%, transparent 100%)`
                             }}
                         >
-                            <div style={{ fontSize: '2.5rem', marginBottom: '0.75rem' }}>{roadmap.icon}</div>
-                            <h3 style={{ fontSize: '1.05rem', fontWeight: 800, color: 'var(--text-primary)', marginBottom: '0.3rem' }}>{roadmap.title}</h3>
-                            <p style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', marginBottom: '0.75rem', lineHeight: 1.5 }}>{roadmap.description.slice(0, 90)}…</p>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.75rem' }}>
+                                <div style={{ fontSize: '2.5rem' }}>{roadmap.icon}</div>
+                                {profileDomain === roadmap.title && (
+                                    <span style={{ fontSize: '0.65rem', background: 'var(--primary-500)', color: 'white', padding: '2px 8px', borderRadius: '12px', fontWeight: 800 }}>MY DOMAIN</span>
+                                )}
+                             </div>
+                             <h3 style={{ fontSize: '1.05rem', fontWeight: 800, color: 'var(--text-primary)', marginBottom: '0.3rem' }}>{roadmap.title}</h3>
+                             <p style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', marginBottom: '0.75rem', lineHeight: 1.5 }}>{roadmap.description.slice(0, 90)}…</p>
                             <div className="flex gap-sm">
                                 <span className="badge" style={{ fontSize: '0.65rem', borderColor: roadmap.color, color: roadmap.color }}>{roadmap.difficulty}</span>
                                 <span className="badge" style={{ fontSize: '0.65rem' }}>{roadmap.duration}</span>
