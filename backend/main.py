@@ -21,33 +21,7 @@ from services.historical_market_data import historical_service, risk_service
 from services.notification_service import notification_service
 from services.mock_interview_service import build_mock_plan, generate_mock_question, evaluate_mock_answer
 
-# --- Automated Daily Job Crawler ---
-async def background_job_crawler():
-    """Background task that automatically runs the job crawler every 24 hours."""
-    while True:
-        try:
-            # Wait a few seconds for server to fully initialize
-            await asyncio.sleep(15) 
-            print("🕒 [Auto-Crawler] Waking up to scan job boards...")
-            # run_job_crawler_manual is a synchronous function, we call it in thread if needed
-            # but since it's an API bound I/O mostly, it might block the loop lightly. For a background task, it's okay.
-            result = run_job_crawler_manual()
-            print(f"🕒 [Auto-Crawler] Result: {result.get('message', result)}")
-        except Exception as e:
-            print(f"🕒 [Auto-Crawler] Error: {e}")
-        
-        # Sleep for exactly 24 hours (86400 seconds) before running again
-        await asyncio.sleep(86400)
-
-@asynccontextmanager
-async def app_lifespan(app: FastAPI):
-    # Startup logic
-    crawler_task = asyncio.create_task(background_job_crawler())
-    yield
-    # Shutdown logic
-    crawler_task.cancel()
-
-app = FastAPI(lifespan=app_lifespan)
+app = FastAPI()
 
 app.add_middleware(
     CORSMiddleware,
@@ -204,6 +178,13 @@ class QuizFeedbackRequest(BaseModel):
     results: List[dict]
     subject: str
     topic: str
+
+class TargetedQuizRequest(BaseModel):
+    user_email: str
+    subject: str
+    domain: str
+    weak_areas: List[str]
+    difficulty: str = "medium"
 
 @app.post("/signup", response_model=Token)
 def signup(user_data: UserAuth):
@@ -654,10 +635,13 @@ def run_job_crawler_manual():
     """Manually trigger the background crawler to find jobs for all active subscribers."""
     from services.career_pathfinder import _search_jobs_multi_source, _extract_skills_from_text
     try:
+        print("🔍 [Crawler] Fetching active subscribers...")
         subs = supabase.table('job_notifications').select('*, users(email)').eq('is_active', True).execute()
         if not subs.data:
+            print("ℹ️ [Crawler] No active subscribers found.")
             return {"success": True, "message": "No active subscribers."}
             
+        print(f"👥 [Crawler] Found {len(subs.data)} active subscribers.")
         notifications_sent: int = 0
         for sub in subs.data:
             user_id = sub['user_id']
@@ -666,31 +650,36 @@ def run_job_crawler_manual():
             city = sub['city']
             min_score = sub['min_score']
             
+            print(f"👤 [Crawler] Processing {user_email} (Role: {role}, City: {city})...")
+            
             # Fetch user's latest resume to extract skills
-            # This is simplified; ideally we store extracted skills in profile
             resume_res = supabase.table('student_profiles').select('skills').eq('user_id', user_id).execute()
             user_skills = resume_res.data[0]['skills'] if resume_res.data and resume_res.data[0].get('skills') else []
             
+            print(f"🔎 [Crawler] Searching jobs for {role} in {city}...")
             jobs = _search_jobs_multi_source(role, "Mid-Level", city, user_skills)
+            print(f"🎯 [Crawler] Found {len(jobs)} potential matches for {user_email}.")
             
             high_matches = []
             for job in jobs:
                 score = job.get('suitability_score', 0)
                 link = job.get('link', '')
                 if score >= min_score and link:
-                    # Check if already notified
                     if not notification_service.was_notified(supabase, user_id, link):
                         high_matches.append(job)
                         notification_service.record_match(supabase, user_id, link, score)
                         
             if high_matches:
+                print(f"✉️ [Crawler] Sending {len(high_matches)} notifications to {user_email}...")
                 if notification_service.send_job_notification(user_email, high_matches):
                     notifications_sent += 1
                     supabase.table('job_notifications').update({'last_notified_at': datetime.now(timezone.utc).isoformat()}).eq('id', sub['id']).execute()
+            else:
+                print(f"⏭️ [Crawler] No new high-match jobs for {user_email}.")
                     
         return {"success": True, "message": f"Crawler finished. Sent {notifications_sent} notifications."}
     except Exception as e:
-        print(f"Crawler error: {e}")
+        print(f"❌ [Crawler] Error: {e}")
         return {"success": False, "error": str(e)}
 
 @app.get("/generate-quiz")
@@ -1020,7 +1009,29 @@ def mock_interview_question(req: MockInterviewQuestionReq):
 @app.post("/teacher/explain")
 def teacher_explain(req: TeacherExplainRequest):
     """Groq-powered subtopic explanation. If has_doubt, answer the specific doubt."""
-    result = explain_subtopic(req.topic, req.subtopic, req.domain, req.has_doubt, req.doubt_text, req.history)
+    from services.personal_rag_service import save_teacher_interaction
+    
+    # 1. Generate explanation/answer
+    result = explain_subtopic(
+        req.topic, 
+        req.subtopic, 
+        req.domain, 
+        req.has_doubt, 
+        req.doubt_text, 
+        req.history, 
+        req.user_email
+    )
+    
+    # 2. Persist interaction for Personal RAG
+    if req.user_email:
+        if req.has_doubt and req.doubt_text:
+            save_teacher_interaction(req.user_email, "user", req.doubt_text, supabase)
+            save_teacher_interaction(req.user_email, "assistant", result.get("explanation", ""), supabase)
+        elif not req.has_doubt:
+            # Also save standard explanations as context
+            summary = f"Student explored {req.subtopic} in {req.topic}."
+            save_teacher_interaction(req.user_email, "system", summary, supabase)
+            
     return result
 
 @app.post("/teacher/generate-notes")
@@ -1145,3 +1156,86 @@ if __name__ == "__main__":
     import uvicorn
     print("🚀 Starting Edunovas Backend...")
     uvicorn.run(app, host="0.0.0.0", port=8000)
+@app.get("/student/weak-areas")
+def get_weak_areas(user_email: str):
+    """Identify weak areas from past quiz history."""
+    try:
+        user_res = supabase.table('users').select('id').eq('email', user_email).execute()
+        if not user_res.data:
+            return {"weak_areas": []}
+        user_id = user_res.data[0]['id']
+        
+        # Fetch last 10 quizzes with weak areas
+        history = supabase.table('quiz_history').select('weak_areas, topic, score').eq('user_id', user_id).order('date', desc=True).limit(20).execute()
+        
+        # Aggregate unique weak areas where score was low or they were explicitly listed
+        all_weak = []
+        for h in history.data:
+            if h.get('weak_areas'):
+                all_weak.extend(h['weak_areas'])
+            elif h.get('score', 100) < 60:
+                all_weak.append(h['topic'])
+                
+        # Deduplicate and clean
+        unique_weak = list(set([w.strip() for w in all_weak if w and len(w.strip()) > 2]))
+        return {"weak_areas": unique_weak[:12]}
+    except Exception as e:
+        print(f"Error fetching weak areas: {e}")
+        return {"weak_areas": []}
+
+@app.get("/student/weak-area-explanation")
+def explain_weak_area(user_email: str, topic: str, subtopic: str, domain: str):
+    """Generate notes specifically for a weak area to improve confidence."""
+    from services.teacher_service import explain_subtopic
+    result = explain_subtopic(topic, subtopic, domain, user_email=user_email)
+    # Add a motivation prefix
+    result["explanation"] = f"### 💡 Focus Session: Improving your {subtopic} skills\n\n" + result["explanation"]
+    return result
+
+@app.post("/student/targeted-quiz")
+def targeted_quiz_endpoint(req: TargetedQuizRequest):
+    """Generate a quiz focusing strictly on the provided weak areas."""
+    from assistants.quiz_master import generate_dynamic_quiz
+    # Choose one random weak area or combine them
+    import random
+    focus_topic = random.choice(req.weak_areas) if req.weak_areas else "General"
+    
+    # We pass 'targeted' mode to quiz master
+    return generate_dynamic_quiz(
+        subject=req.subject,
+        topic=focus_topic,
+        difficulty=req.difficulty,
+        mode="targeted",
+        domain=req.domain,
+        subtopic=focus_topic
+    )
+
+@app.post("/teacher/ask-multimodal")
+async def teacher_multimodal_doubt(
+    user_email: str = Form(...),
+    topic: str = Form(...),
+    subtopic: str = Form(...),
+    domain: str = Form(...),
+    message: str = Form(""),
+    file: Optional[UploadFile] = File(None)
+):
+    """Handle text + image screenshots for doubts."""
+    from services.teacher_service import explain_subtopic
+    from llm_service import extract_text_from_image
+    
+    ocr_text = ""
+    if file:
+        contents = await file.read()
+        ocr_text = extract_text_from_image(contents) or ""
+    
+    combined_doubt = f"{message}\n\n[Attached Screenshot Context]:\n{ocr_text}" if ocr_text else message
+    
+    result = explain_subtopic(
+        topic=topic,
+        subtopic=subtopic,
+        domain=domain,
+        has_doubt=True,
+        doubt_text=combined_doubt,
+        user_email=user_email
+    )
+    return result

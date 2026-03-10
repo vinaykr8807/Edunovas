@@ -14,7 +14,8 @@ interface Question {
 }
 const QUIZ_MODES = [
     { id: 'standard', label: 'Ultimate Assessment', icon: '⚡', desc: 'Mixed MCQ, T/F, Matching & Visuals' },
-    { id: 'teach_ai', label: 'Teach the AI', icon: '🤖', desc: 'Explain concepts in your own words' }
+    { id: 'teach_ai', label: 'Teach the AI', icon: '🤖', desc: 'Explain concepts in your own words' },
+    { id: 'targeted', label: 'Adaptive Recovery', icon: '🩺', desc: 'Focus strictly on your identified weak areas' }
 ];
 
 export const QuizMaster = ({ onComplete }: any) => {
@@ -86,17 +87,39 @@ export const QuizMaster = ({ onComplete }: any) => {
                 subtopic = milestone?.title || "";
             }
 
-            const queryParams = new URLSearchParams({
-                subject,
-                topic,
-                difficulty: config.difficulty,
-                mode: quizMode,
-                ...(domain && { domain }),
-                ...(subtopic && { subtopic })
-            });
+            let data;
+            const user = JSON.parse(localStorage.getItem('edunovas_user') || '{}');
 
-            const res = await fetch(`http://127.0.0.1:8000/generate-quiz?${queryParams.toString()}`);
-            const data = await res.json();
+            if (quizMode === 'targeted') {
+                // Fetch weak areas first if needed, or assume they are passed/calculated
+                const weakRes = await fetch(`http://127.0.0.1:8000/student/weak-areas?user_email=${encodeURIComponent(user.email)}`);
+                const weakData = await weakRes.json();
+                
+                const res = await fetch(`http://127.0.0.1:8000/student/targeted-quiz`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        user_email: user.email,
+                        subject: subject,
+                        domain: domain || subject,
+                        weak_areas: weakData.weak_areas,
+                        difficulty: config.difficulty
+                    })
+                });
+                data = await res.json();
+            } else {
+                const queryParams = new URLSearchParams({
+                    subject,
+                    topic,
+                    difficulty: config.difficulty,
+                    mode: quizMode,
+                    ...(domain && { domain }),
+                    ...(subtopic && { subtopic })
+                });
+
+                const res = await fetch(`http://127.0.0.1:8000/generate-quiz?${queryParams.toString()}`);
+                data = await res.json();
+            }
 
             if (Array.isArray(data) && data.length > 0) {
                 setQuiz(data);
@@ -238,9 +261,14 @@ export const QuizMaster = ({ onComplete }: any) => {
                     })
                 });
                 const fbData = await fbRes.json();
-                setFeedback(fbData);
+                if (fbRes.ok) {
+                    setFeedback(fbData);
+                } else {
+                    setFeedback({ error: true, gaps: ["AI Analysis currently unavailable. Please review the detailed question breakdown below."], plan: ["Review the foundational concepts for each incorrect answer."] });
+                }
             } catch (e) {
                 console.error("Feedback error:", e);
+                setFeedback({ error: true, gaps: ["Connection error with AI Mentor."], plan: ["Check your internet connection and try again."] });
             } finally {
                 setIsAnalyzing(false);
             }
@@ -338,85 +366,94 @@ export const QuizMaster = ({ onComplete }: any) => {
                     <h2 style={{ fontSize: '2.5rem', fontWeight: 900 }}>{score}% Accuracy</h2>
                     <p style={{ color: 'var(--text-secondary)' }}>Ultimate Adaptive Assessment: <strong>{viewMode.toUpperCase()}</strong> completed.</p>
 
-                    {isAnalyzing ? (
-                         <div className="mt-lg flex-col items-center gap-md">
-                            <div style={{ width: '30px', height: '30px', border: '3px solid rgba(255,255,255,0.1)', borderTopColor: 'var(--primary-500)', borderRadius: '50%', animation: 'spin 1s linear infinite' }}></div>
-                            <p style={{ fontSize: '0.85rem', color: 'var(--primary-400)', fontWeight: 700 }}>AI MENTOR: GENERATING VISUAL ANALYTICS...</p>
-                        </div>
-                    ) : feedback && (
-                        <div className="flex-col w-full gap-xl fade-in">
+                    {/* AI Insights Section */}
+                    {(isAnalyzing || feedback) && (
+                        <div className="flex-col gap-xl w-full">
                             <div className="glass-card" style={{ padding: '2.5rem', background: 'rgba(52, 160, 90, 0.02)', border: '1px solid var(--primary-500)', boxShadow: '0 0 30px rgba(52, 160, 90, 0.1)' }}>
                                 <h4 style={{ fontSize: '0.9rem', fontWeight: 900, color: 'var(--primary-400)', marginBottom: '1.5rem', textAlign: 'center', letterSpacing: '2px' }}>📊 CONCEPTUAL MASTERY & VISUAL ANALYTICS</h4>
-                                <div className="flex justify-center" style={{ margin: '1rem 0' }}>
-                                    <KnowledgeGraph 
-                                        data={feedback.knowledge_graph || [
-                                            { id: '1', label: 'Theory', level: score/100, status: score >= 80 ? 'done' : 'learning' },
-                                            { id: '2', label: 'Logic', level: 0.55, status: 'learning' },
-                                            { id: '3', label: 'Diagrams', level: 0.35, status: 'struggling' },
-                                            { id: '4', label: 'Systems', level: 0.65, status: 'learning' }
-                                        ]} 
-                                    />
-                                </div>
+                                {isAnalyzing ? (
+                                    <div className="flex justify-center items-center py-xl">
+                                        <div style={{ width: '30px', height: '30px', border: '3px solid rgba(255,255,255,0.1)', borderTopColor: 'var(--primary-500)', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
+                                    </div>
+                                ) : feedback && (
+                                    <div className="flex justify-center" style={{ margin: '1rem 0' }}>
+                                        <KnowledgeGraph 
+                                            data={feedback.knowledge_graph || [
+                                                { id: '1', label: 'Theory', level: score/100, status: score >= 80 ? 'done' : 'learning' },
+                                                { id: '2', label: 'Logic', level: 0.55, status: 'learning' },
+                                                { id: '3', label: 'Diagrams', level: 0.35, status: 'struggling' },
+                                                { id: '4', label: 'Systems', level: 0.65, status: 'learning' }
+                                            ]} 
+                                        />
+                                    </div>
+                                )}
                             </div>
 
                             <div className="grid-2 gap-md w-full" style={{ textAlign: 'left' }}>
                                 <div className="glass-card" style={{ padding: '1.5rem', borderLeft: '6px solid var(--accent-red)', background: 'rgba(231, 76, 60, 0.02)' }}>
-                                    <h4 style={{ fontSize: '0.8rem', fontWeight: 900, color: 'var(--accent-red)', marginBottom: '1rem', textTransform: 'uppercase' }}>📉 Critical Gaps Found</h4>
-                                    <ul style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
-                                        {feedback.gaps?.map((g: string, i: number) => <li key={i} className="flex items-center gap-xs"> <span style={{ color: 'var(--accent-red)' }}>⚠</span> {g}</li>) || <li>No major gaps identified</li>}
-                                    </ul>
+                                    <h4 style={{ fontSize: '0.8rem', fontWeight: 900, color: 'var(--accent-red)', marginBottom: '1rem', textTransform: 'uppercase' }}>📉 Weak Areas & Skill Gaps</h4>
+                                    {isAnalyzing ? (
+                                        <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>AI is scanning your errors...</p>
+                                    ) : (
+                                        <ul style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
+                                            {feedback?.gaps?.map((g: string, i: number) => <li key={i} className="flex items-center gap-xs"> <span style={{ color: 'var(--accent-red)' }}>⚠</span> {g}</li>) || <li>No major gaps identified</li>}
+                                        </ul>
+                                    )}
                                 </div>
                                 <div className="glass-card" style={{ padding: '1.5rem', borderLeft: '6px solid var(--accent-green)', background: 'rgba(46, 204, 113, 0.02)' }}>
                                     <h4 style={{ fontSize: '0.8rem', fontWeight: 900, color: 'var(--accent-green)', marginBottom: '1rem', textTransform: 'uppercase' }}>🚀 Hyper-Learning Path</h4>
-                                    <ul style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
-                                        {feedback.plan?.map((p: string, i: number) => <li key={i} className="flex items-center gap-xs"> <span style={{ color: 'var(--accent-green)' }}>★</span> {p}</li>) || <li>Continue your current learning path</li>}
-                                    </ul>
+                                    {isAnalyzing ? (
+                                        <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Generating personalized improvement plan...</p>
+                                    ) : (
+                                        <ul style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
+                                            {feedback?.plan?.map((p: string, i: number) => <li key={i} className="flex items-center gap-xs"> <span style={{ color: 'var(--accent-green)' }}>★</span> {p}</li>) || <li>Continue your learning path</li>}
+                                        </ul>
+                                    )}
                                 </div>
-                            </div>
-
-                            {/* Question Review Section */}
-                            <div className="flex-col gap-md w-full" style={{ textAlign: 'left' }}>
-                                <h4 style={{ fontSize: '0.9rem', fontWeight: 900, color: 'var(--text-primary)', marginBottom: '0.5rem', textTransform: 'uppercase' }}>📝 Question Review</h4>
-                                {quiz?.map((q, i) => {
-                                    // Better logic for individual item
-                                    let itemCorrect = false;
-                                    if (q.type === 'matching') {
-                                        const userMatches = JSON.parse(answers[i] || '{}');
-                                        const totalPairs = Object.keys(q.matching_pairs || {}).length;
-                                        let correctPairs = 0;
-                                        Object.entries(q.matching_pairs || {}).forEach(([k, v]) => {
-                                            if (userMatches[k] === v) correctPairs++;
-                                        });
-                                        itemCorrect = correctPairs === totalPairs;
-                                    } else {
-                                        itemCorrect = answers[i] === q.answer;
-                                    }
-
-                                    return (
-                                        <div key={i} className="glass-card" style={{ padding: '1.25rem', borderLeft: `4px solid ${itemCorrect ? 'var(--primary-500)' : 'var(--accent-red)'}`, background: 'rgba(255,255,255,0.02)' }}>
-                                            <div className="flex justify-between items-start gap-md">
-                                                <div className="flex-col gap-xs flex-1">
-                                                    <span style={{ fontSize: '0.85rem', fontWeight: 700 }}>Q{i+1}: {q.question}</span>
-                                                    {!itemCorrect && (
-                                                        <span style={{ fontSize: '0.75rem', color: 'var(--accent-red)' }}>
-                                                            Your Answer: {q.type === 'matching' ? 'Incorrect Arrangement' : answers[i]}
-                                                        </span>
-                                                    )}
-                                                    <span style={{ fontSize: '0.75rem', color: 'var(--primary-500)' }}>
-                                                        Correct Answer: {q.type === 'matching' ? 'Correct Arrangement' : q.answer}
-                                                    </span>
-                                                </div>
-                                                <span style={{ fontSize: '1.2rem' }}>{itemCorrect ? '✅' : '❌'}</span>
-                                            </div>
-                                            <p style={{ marginTop: '0.75rem', fontSize: '0.75rem', color: 'var(--text-muted)', fontStyle: 'italic', borderTop: '1px solid var(--glass-border)', paddingTop: '0.5rem' }}>
-                                                <strong>Mentor Note:</strong> {q.explanation}
-                                            </p>
-                                        </div>
-                                    );
-                                })}
                             </div>
                         </div>
                     )}
+
+                    {/* Question Review Section (Always Visible) */}
+                    <div className="flex-col gap-md w-full fade-in" style={{ textAlign: 'left', marginTop: '1.5rem' }}>
+                        <h4 style={{ fontSize: '0.9rem', fontWeight: 900, color: 'var(--text-primary)', marginBottom: '0.5rem', textTransform: 'uppercase' }}>📝 Question Review</h4>
+                        {quiz?.map((q, i) => {
+                            let itemCorrect = false;
+                            if (q.type === 'matching' && q.matching_pairs) {
+                                const userMatches = JSON.parse(answers[i] || '{}');
+                                const totalPairs = Object.keys(q.matching_pairs).length;
+                                let correctPairs = 0;
+                                Object.entries(q.matching_pairs).forEach(([k, v]) => {
+                                    if (userMatches[k] === v) correctPairs++;
+                                });
+                                itemCorrect = correctPairs === totalPairs;
+                            } else {
+                                itemCorrect = answers[i] === q.answer;
+                            }
+
+                            return (
+                                <div key={i} className="glass-card" style={{ padding: '1.25rem', borderLeft: `4px solid ${itemCorrect ? 'var(--primary-500)' : 'var(--accent-red)'}`, background: 'rgba(255,255,255,0.02)' }}>
+                                    <div className="flex justify-between items-start gap-md">
+                                        <div className="flex-col gap-xs flex-1">
+                                            <span style={{ fontSize: '0.85rem', fontWeight: 700 }}>Q{i+1}: {q.question}</span>
+                                            {!itemCorrect && (
+                                                <span style={{ fontSize: '0.75rem', color: 'var(--accent-red)' }}>
+                                                    Your Answer: {q.type === 'matching' ? 'Incorrect Arrangement' : answers[i]}
+                                                </span>
+                                            )}
+                                            <span style={{ fontSize: '0.75rem', color: 'var(--primary-500)' }}>
+                                                Correct Answer: {q.type === 'matching' ? 'Correct Arrangement' : q.answer}
+                                            </span>
+                                        </div>
+                                        <span style={{ fontSize: '1.2rem' }}>{itemCorrect ? '✅' : '❌'}</span>
+                                    </div>
+                                    <p style={{ marginTop: '0.75rem', fontSize: '0.75rem', color: 'var(--text-muted)', fontStyle: 'italic', borderTop: '1px solid var(--glass-border)', paddingTop: '0.5rem' }}>
+                                        <strong>Mentor Note:</strong> {q.explanation}
+                                    </p>
+                                </div>
+                            );
+                        })}
+                    </div>
 
                     <div className="flex gap-md mt-xl">
                         <button className="btn btn-primary" onClick={() => { setIsFinished(false); setFeedback(null); setCurrentIndex(0); setAnswers({}); }}>Retake Quiz</button>

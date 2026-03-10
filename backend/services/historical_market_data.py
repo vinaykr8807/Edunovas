@@ -11,6 +11,8 @@ class HistoricalMarketData:
         self._data: List[Dict[str, Any]] = []
         self._load_all_datasets()
 
+    MAX_RECORDS = 20000
+
     def _load_all_datasets(self):
         print("🔍 Loading Global Job Datasets...")
         
@@ -48,6 +50,7 @@ class HistoricalMarketData:
                         if y_raw and '-' in y_raw: year = y_raw.split('-')[0]
                         elif y_raw.isdigit(): year = y_raw
                     
+                    if len(self._data) >= self.MAX_RECORDS: return
                     self._data.append({
                         'title': title,
                         'company': str(r.get('company', r.get('company_name', 'Unknown'))),
@@ -63,21 +66,30 @@ class HistoricalMarketData:
             with open(path, 'r') as f:
                 for line in f:
                     if not line.strip(): continue
-                    r = json.loads(line)
-                    title = r.get('job_title', '')
-                    if not title: continue
-                    
-                    year = "2021"
-                    d = r.get('post_date', r.get('crawl_timestamp', ''))
-                    if d and '-' in d: year = d.split('-')[0]
-                    
-                    self._data.append({
-                        'title': title,
-                        'company': r.get('company_name', 'Unknown'),
-                        'domain': r.get('category', 'Technology'),
-                        'year_val': year if (year and year.isdigit()) else '2021',
-                        'source': source
-                    })
+                    # Handle lines that might contain multiple JSON objects concatenated
+                    # e.g., {"a":"b"}{"c":"d"}
+                    # we split by "}{" and restore the braces
+                    segments = line.strip().replace("}{", "}|||{").split("|||")
+                    for segment in segments:
+                        if len(self._data) >= self.MAX_RECORDS: return
+                        try:
+                            r = json.loads(segment)
+                            title = r.get('job_title', '')
+                            if not title: continue
+                            
+                            year = "2021"
+                            d = r.get('post_date', r.get('crawl_timestamp', ''))
+                            if d and '-' in d: year = d.split('-')[0]
+                            
+                            self._data.append({
+                                'title': title,
+                                'company': r.get('company_name', 'Unknown'),
+                                'domain': r.get('category', 'Technology'),
+                                'year_val': year if (year and year.isdigit()) else '2021',
+                                'source': source
+                            })
+                        except json.JSONDecodeError:
+                            continue
         except Exception as e: print(f"Error loading {path}: {e}")
 
     def _load_naukri_csv(self, path: str):
@@ -86,6 +98,7 @@ class HistoricalMarketData:
             df = pd.read_csv(path)
             # Naukri data doesn't have explicit year in the samples I saw, assuming 2023 for this set
             for _, row in df.iterrows():
+                if len(self._data) >= self.MAX_RECORDS: return
                 self._data.append({
                     'title': str(row.get('Job_Titles', '')),
                     'company': str(row.get('Company_Names', 'Naukri.com')),

@@ -5,9 +5,9 @@ from typing import Dict, List, Optional
 from urllib.parse import urlparse
 
 try:
-    from duckduckgo_search import DDGS
-except ImportError:
     from ddgs import DDGS
+except ImportError:
+    from duckduckgo_search import DDGS
 
 import requests
 import feedparser

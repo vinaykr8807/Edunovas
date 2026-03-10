@@ -31,15 +31,18 @@ def generate_dynamic_quiz(subject: str, topic: str, difficulty: str, mode: str =
     context_str = f"in {domain}" if domain else ""
     subtopic_str = f"specifically on {subtopic}" if subtopic else ""
     
-    # Mode-specific prompt additions - Integrated into a single unified flow
-    instruction = "Generate a 10-question mixed-mode technical assessment. Include a mix of: 1. Standard conceptual MCQs, 2. Subtle True/False technical nuances, 3. 'Match the Following' permutations, 4. Code Completion logic (____), and 5. Image-Based analysis (provide a 'visual_query'). Ensure the difficulty scales from basic to advanced."
+    # Mode-specific prompt additions
+    if mode == "targeted":
+        instruction = f"This is a TARGETED RECOVERY QUIZ. The student has shown weakness in: {subtopic or topic}. Generate questions that specifically diagnose their misunderstanding and rebuild their confidence with clear, constructive feedback in the explanations. Focus deeply on the core mechanics."
+    else:
+        instruction = "Generate a 10-question mixed-mode technical assessment. Include a mix of: 1. Standard conceptual MCQs, 2. Subtle True/False technical nuances, 3. 'Match the Following' permutations, 4. Code Completion logic (____), and 5. Image-Based analysis (provide a 'visual_query'). Ensure the difficulty scales from basic to advanced."
 
     prompt = f"""
     You are an expert technical interviewer and educator. 
     Create a {difficulty} level technical quiz for a student learning {subject} {context_str}.
     The quiz should be {subtopic_str} (under the broader topic of {topic}).
     
-    QUIZ MODE: UNIFIED ADAPTIVE ASSESSMENT
+    QUIZ MODE: {mode.upper()}
     Instruction: {instruction}
     
     Rules:
@@ -121,10 +124,10 @@ def generate_quiz_feedback(results: list, subject: str, topic: str):
     2. "plan": A list of 3 concrete, actionable, and technical steps to improve.
     3. "knowledge_graph": A list of 4 objects for visual analytics. Adjust "level" (0-1) and "status" based on whether related questions were correct.
        [
-         {"id": "1", "label": "Theory", "level": float, "status": "done"|"learning"|"struggling"},
-         {"id": "2", "label": "Logic", "level": float, "status": "done"|"learning"|"struggling"},
-         {"id": "3", "label": "Systems", "level": float, "status": "done"|"learning"|"struggling"},
-         {"id": "4", "label": "Implementation", "level": float, "status": "done"|"learning"|"struggling"}
+         {{"id": "1", "label": "Theory", "level": float, "status": "done"|"learning"|"struggling"}},
+         {{"id": "2", "label": "Logic", "level": float, "status": "done"|"learning"|"struggling"}},
+         {{"id": "3", "label": "Systems", "level": float, "status": "done"|"learning"|"struggling"}},
+         {{"id": "4", "label": "Implementation", "level": float, "status": "done"|"learning"|"struggling"}}
        ]
     
     Return ONLY a JSON object with "gaps", "plan", and "knowledge_graph".

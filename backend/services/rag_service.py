@@ -2,7 +2,10 @@ import os
 import faiss
 import numpy as np
 import trafilatura
-from duckduckgo_search import DDGS
+try:
+    from ddgs import DDGS
+except ImportError:
+    from duckduckgo_search import DDGS
 from sentence_transformers import SentenceTransformer
 from playwright.sync_api import sync_playwright
 

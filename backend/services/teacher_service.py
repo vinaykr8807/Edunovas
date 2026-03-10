@@ -1,6 +1,7 @@
 import os
 import io
 import json
+import re
 from groq import Groq
 from dotenv import load_dotenv
 from services.pexels_service import get_pexels_image, get_pexels_video
@@ -116,27 +117,49 @@ Return JSON:
         return {"error": str(e)}
 
 
+from typing import Optional, List, Dict, Any
+
 def explain_subtopic(topic: str, subtopic: str, domain: str,
-                     has_doubt: bool = False, doubt_text: str = None,
-                     history: list = None) -> dict:
+                     has_doubt: bool = False, doubt_text: Optional[str] = None,
+                     history: Optional[List[Dict[str, str]]] = None, 
+                     user_email: Optional[str] = None) -> Dict[str, Any]:
     """Generate a Groq-powered explanation for a subtopic with RAG and chat memory."""
     from services.rag_service import generate_rag_context
-    
+    from services.personal_rag_service import get_personal_context
+    from supabase_client import supabase
+
     rag_context = generate_rag_context(topic, subtopic, domain)
+    personal_context = ""
+    if user_email:
+        personal_context = get_personal_context(user_email, doubt_text or subtopic, supabase)
+
     context_injection = ""
     if rag_context:
-        context_injection = f"\n\nHere is some real-time extracted context from the web to help you:\n{rag_context}\n\nUse this context to provide an extremely detailed, context-aware explanation.\n"
+        context_injection = f"\n\nREAL-TIME WEB CONTEXT:\n{rag_context}\n"
+    
+    if personal_context:
+        context_injection += f"\n{personal_context}\n"
+
+    if context_injection:
+        context_injection = f"\n\nHere is some additional context to help you personalize your response:\n{context_injection}\nUse this context to provide an extremely detailed, context-aware, and personalized explanation.\n"
 
     if has_doubt and doubt_text:
-        system_prompt = f"""You are an expert {domain} tutor. A student is studying "{subtopic}" under "{topic}".
+        system_prompt = f"""You are an industry-expert {domain} tutor. A student is studying "{subtopic}" under "{topic}".
 {context_injection}
-Provide a clear, conversational, and technical answer to their doubt.
-Use the conversation history for context to provide a continuous learning experience.
-Maintain a helpful and direct tone.
+Provide an exhaustive, high-detail, and master-level solution to their specific doubt.
+INSTRUCTIONS:
+- provide at least 3-4 detailed paragraphs or structured sections.
+- GO BEYOND a simple definition; explain internals, mechanics, and common industry scenarios.
+- ALWAYS include code examples, analogies, and technical nuances.
+- NEVER leave a list or category empty (e.g., if you write "Examples:", you MUST list 3+ examples).
+- Use professional Markdown (Headings, Bullets, Code Blocks).
+- Ensure the technical depth matches a Senior Engineer's explanation.
 
 Return a JSON object:
 {{
-  "explanation": "Markdown response with clear formatting..."
+  "explanation": "An exhaustive, master-level markdown response explaining the solution...",
+  "visual_query": "stock photo keyword",
+  "video_query": "tutorial video query"
 }}
 """
     else:
@@ -160,22 +183,18 @@ Your explanation MUST follow this exact structure and style:
 (Where does it break? How do experts use it at scale?)
 
 ## 🗺️ Visual System Flowchart
-(MANDATORY: Provide a D2 diagram code block starting with ` ```d2 ` to visualize the architecture.
-Use this syntax:
-Backend {{ Auth -> DB }}
-User -> API: Request
-Cloud: {{ shape: cloud }}
-Each statement on a new line.)
+(The diagram will be automatically rendered from the d2_code key. Do not include it here.)
 
 ## ⚠️ Expert Pitfalls & Optimization
 (What are the 3 things beginners get wrong?)
 
 Also, provide TWO search queries for image/video.
-IMPORTANT: For `visual_query`, Pexels (a stock photo site) is used. Do NOT use abstract academic or anatomical terms like "distributed systems core". Instead, use broad, simple technology photography terms (e.g. "server room", "cloud computing", "data center", "programmer typing", "software code"). Keep it 1-2 words.
+IMPORTANT: For `visual_query`, Pexels (a stock photo site) is used. Use broad, simple technology photography terms (e.g. "server room", "cloud computing", "data center", "programmer typing", "software code"). Keep it 1-2 words.
 
 Return a JSON object:
 {{
-  "explanation": "FULL markdown content following the structure above...",
+  "explanation": "FULL deep-dive markdown content WITHOUT the diagram block.",
+  "d2_code": "Generate a professional, multi-container D2 diagram. \\nSyntax: \\nContainer {{ \\n  Component1 -> Component2: 'Label' \\n}} \\nTopLevel1 -> Container.Component1: 'Action' \\n\\nRules: \\n1. Group related components into containers (e.g., Client, Server, Cloud). \\n2. Use descriptive labels on arrows. \\n3. Ensure all blocks are connected. \\n4. No icons or decorative symbols.",
   "visual_query": "broad tech stock photo keyword",
   "video_query": "specific instructional video query"
 }}
@@ -202,6 +221,11 @@ Return a JSON object:
         )
         data = json.loads(response.choices[0].message.content.strip())
         explanation = data.get("explanation", "")
+        d2_code = data.get("d2_code", "").strip()
+        
+        # Merge diagram into explanation for frontend renderer
+        if d2_code and "```d2" not in explanation:
+            explanation += f"\n\n## 🗺️ Visual System Flowchart\n```d2\n{d2_code}\n```"
 
         # Fetch visuals using AI-generated specific queries
         image_url = get_pexels_image(data.get("visual_query") or "technology computer")
@@ -209,6 +233,7 @@ Return a JSON object:
 
         return {
             "explanation": explanation,
+            "d2_code": d2_code,
             "topic": topic,
             "subtopic": subtopic,
             "domain": domain,
@@ -216,8 +241,12 @@ Return a JSON object:
             "video_url": video_url
         }
     except Exception as e:
+        error_msg = str(e)
+        print(f"Teacher service error: {error_msg}")
+        
+        # Friendly fallback if JSON or API fails
         return {
-            "explanation": f"Sorry, could not generate explanation: {str(e)}",
+            "explanation": f"I encountered a slight technical hiccup while deep-diving into **{subtopic}**. \n\nHowever, in short: {subtopic} is a critical concept in {domain} that focuses on efficiency and scalability. \n\nPlease try again in a moment or ask a specific doubt about it!",
             "topic": topic,
             "subtopic": subtopic,
             "domain": domain

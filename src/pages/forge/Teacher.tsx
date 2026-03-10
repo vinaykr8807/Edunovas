@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { CURRICULUM_DATA, type Roadmap } from '../../data/curriculumData';
+import { playNotificationSound } from '../../utils/audio';
 
 const getUser = () => JSON.parse(localStorage.getItem('edunovas_user') || '{}');
 
@@ -34,7 +35,8 @@ const DiagramBlock = ({ engine, code }: { engine: string, code: string }) => {
                 });
 
                 if (!response.ok) {
-                    throw new Error(`Kroki error: ${response.statusText}`);
+                    const errorText = await response.text();
+                    throw new Error(errorText || response.statusText);
                 }
 
                 const svgText = await response.text();
@@ -112,6 +114,10 @@ export const Teacher = () => {
     const [savedNotes, setSavedNotes] = useState<{ name: string; display_name: string; signed_url: string; created_at: string }[]>([]);
     const [notesLoading, setNotesLoading] = useState(false);
     const [showNotes, setShowNotes] = useState(false);
+    const [attachedFile, setAttachedFile] = useState<File | null>(null);
+    const [isListening, setIsListening] = useState(false);
+    const [showRecovery, setShowRecovery] = useState(false);
+    const [weakAreas, setWeakAreas] = useState<string[]>([]);
 
     const loadSavedNotes = async () => {
         const user = getUser();
@@ -187,6 +193,7 @@ export const Teacher = () => {
             status: 'learning'
         });
         try {
+            const user = getUser(); // Get user here
             const res = await fetch('http://127.0.0.1:8000/teacher/explain', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -194,7 +201,8 @@ export const Teacher = () => {
                     topic: ph.name,
                     subtopic: ms.title,
                     domain: roadmap.title,
-                    has_doubt: false
+                    has_doubt: false,
+                    user_email: user?.email // Add user_email to the request body
                 })
             });
             const data = await res.json();
@@ -207,27 +215,56 @@ export const Teacher = () => {
     };
 
     const handleAskDoubt = async () => {
-        if (!doubtText.trim() || !milestone || !phase || !selectedRoadmap) return;
+        if ((!doubtText.trim() && !attachedFile) || !milestone || !phase || !selectedRoadmap) return;
         
+        const user = getUser();
         const currentText = doubtText;
-        const updatedHistory = [...chatHistory, { role: 'user' as const, content: currentText }];
+        const currentFile = attachedFile;
+        
+        let imageUrl = '';
+        if (currentFile) {
+            imageUrl = URL.createObjectURL(currentFile);
+        }
+
+        const updatedHistory = [
+            ...chatHistory, 
+            { role: 'user' as const, content: currentText, imageUrl: imageUrl }
+        ];
         setChatHistory(updatedHistory);
         setDoubtText('');
+        setAttachedFile(null);
         setDoubtLoading(true);
         
         try {
-            const res = await fetch('http://127.0.0.1:8000/teacher/explain', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    topic: phase.name,
-                    subtopic: milestone.title,
-                    domain: selectedRoadmap.title,
-                    has_doubt: true,
-                    doubt_text: currentText,
-                    history: chatHistory
-                })
-            });
+            let res;
+            if (currentFile) {
+                const formData = new FormData();
+                formData.append('user_email', user?.email || '');
+                formData.append('topic', phase.name);
+                formData.append('subtopic', milestone.title);
+                formData.append('domain', selectedRoadmap.title);
+                formData.append('message', currentText);
+                formData.append('file', currentFile);
+
+                res = await fetch('http://127.0.0.1:8000/teacher/ask-multimodal', {
+                    method: 'POST',
+                    body: formData
+                });
+            } else {
+                res = await fetch('http://127.0.0.1:8000/teacher/explain', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        topic: phase.name,
+                        subtopic: milestone.title,
+                        domain: selectedRoadmap.title,
+                        has_doubt: true,
+                        doubt_text: currentText,
+                        history: chatHistory,
+                        user_email: user?.email
+                    })
+                });
+            }
             const data = await res.json();
             setChatHistory(prev => [...prev, { role: 'assistant' as const, content: data.explanation }]);
         } catch {
@@ -235,6 +272,24 @@ export const Teacher = () => {
         } finally {
             setDoubtLoading(false);
         }
+    };
+
+    const handleVoiceInput = () => {
+        const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+        if (!SpeechRecognition) {
+            alert("Speech recognition not supported in this browser.");
+            return;
+        }
+        const recognition = new SpeechRecognition();
+        recognition.lang = 'en-US';
+        recognition.onstart = () => setIsListening(true);
+        recognition.onend = () => setIsListening(false);
+        recognition.onresult = (event: any) => {
+            const transcript = event.results[0][0].transcript;
+            setDoubtText(prev => prev + " " + transcript);
+            playNotificationSound('click');
+        };
+        recognition.start();
     };
 
     const handleMarkDone = () => {
@@ -492,10 +547,11 @@ export const Teacher = () => {
                         <button
                             key={roadmap.id}
                             onClick={() => {
-                                setSelectedRoadmap(roadmap);
-                                setPhaseIdx(0);
-                                setMilestoneIdx(0);
-                                loadExplanation(roadmap, 0, 0);
+                                 setSelectedRoadmap(roadmap);
+                                 setPhaseIdx(0);
+                                 setMilestoneIdx(0);
+                                 playNotificationSound('transition');
+                                 loadExplanation(roadmap, 0, 0);
                             }}
                             className="glass-card"
                             style={{
@@ -539,6 +595,19 @@ export const Teacher = () => {
                         <h2 style={{ fontSize: '1.6rem', fontWeight: 900 }}>{selectedRoadmap.title}</h2>
                     </div>
                     <p style={{ color: 'var(--text-secondary)', marginTop: '0.4rem', fontSize: '0.9rem' }}>AI-Guided Learning · Phase {phaseIdx + 1} of {selectedRoadmap.phases.length}</p>
+                    <button 
+                        className="btn btn-secondary mt-sm" 
+                        style={{ fontSize: '0.7rem', borderColor: 'var(--accent-red)', color: 'var(--accent-red)' }}
+                        onClick={async () => {
+                            const user = getUser();
+                            const res = await fetch(`http://127.0.0.1:8000/student/weak-areas?user_email=${encodeURIComponent(user.email)}`);
+                            const data = await res.json();
+                            setWeakAreas(data.weak_areas);
+                            setShowRecovery(true);
+                        }}
+                    >
+                        🩺 Enter Recovery Lounge
+                    </button>
                 </div>
                 {/* Overall Progress */}
                 <div className="glass-card" style={{ padding: '0.75rem 1.5rem', minWidth: '200px' }}>
@@ -552,6 +621,36 @@ export const Teacher = () => {
                     <p style={{ fontSize: '0.65rem', color: 'var(--text-muted)', marginTop: '4px' }}>{doneCount} / {totalMilestones} topics completed</p>
                 </div>
             </header>
+
+            {showRecovery && (
+                <div className="modal-overlay" onClick={() => setShowRecovery(false)}>
+                    <div className="glass-card fade-in" style={{ width: '500px', padding: '2rem' }} onClick={e => e.stopPropagation()}>
+                        <h3 style={{ fontSize: '1.25rem', fontWeight: 800, marginBottom: '1rem' }}>🩺 Personal Recovery Lounge</h3>
+                        <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: '1.5rem' }}>
+                            Based on your recent performance, we've identified these areas that need attention. Improving these will boost your overall mastery.
+                        </p>
+                        <div className="flex-wrap gap-sm" style={{ marginBottom: '2rem' }}>
+                            {weakAreas.length === 0 ? (
+                                <p style={{ fontSize: '0.8rem', opacity: 0.6 }}>No weak areas identified yet. Great job!</p>
+                            ) : (
+                                weakAreas.map(wa => (
+                                    <span key={wa} style={{ background: 'rgba(255,100,100,0.1)', color: 'var(--accent-red)', padding: '0.4rem 0.8rem', borderRadius: '6px', fontSize: '0.75rem', fontWeight: 700, border: '1px solid rgba(255,100,100,0.2)' }}>
+                                        {wa}
+                                    </span>
+                                ))
+                            )}
+                        </div>
+                        <div className="flex-col gap-sm">
+                            <button className="btn btn-primary w-full" onClick={() => { setShowRecovery(false); alert("Redirecting to targeted quiz..."); }}>
+                                Launch Targeted Quiz →
+                            </button>
+                            <button className="btn btn-secondary w-full" onClick={() => setShowRecovery(false)}>
+                                Back to Roadmap
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             <div style={{ display: 'grid', gridTemplateColumns: '260px 1fr', gap: '1.5rem', alignItems: 'start' }} className="teacher-grid">
                 {/* Left: Phase + Milestone Nav */}
@@ -739,8 +838,23 @@ export const Teacher = () => {
                                                     background: msg.role === 'user' ? 'var(--primary-500)' : 'rgba(100,130,255,0.06)',
                                                     color: msg.role === 'user' ? 'white' : 'var(--text-primary)',
                                                     border: msg.role === 'user' ? 'none' : '1px solid rgba(100,130,255,0.15)',
-                                                    fontSize: '0.85rem'
+                                                    fontSize: '0.85rem',
+                                                    boxShadow: '0 4px 12px rgba(0,0,0,0.05)'
                                                 }}>
+                                                    {(msg as any).imageUrl && (
+                                                        <img 
+                                                            src={(msg as any).imageUrl} 
+                                                            alt="Attachment" 
+                                                            style={{ 
+                                                                maxWidth: '100%', 
+                                                                maxHeight: '240px', 
+                                                                borderRadius: '8px', 
+                                                                marginBottom: '0.6rem',
+                                                                display: 'block',
+                                                                border: '1px solid rgba(255,255,255,0.2)'
+                                                            }} 
+                                                        />
+                                                    )}
                                                     {msg.role === 'assistant' ? formatExplanation(msg.content) : msg.content}
                                                 </div>
                                             ))
@@ -752,24 +866,93 @@ export const Teacher = () => {
                                         )}
                                     </div>
 
-                                    <div className="flex gap-sm" style={{ borderTop: '1px solid var(--glass-border)', paddingTop: '1rem' }}>
-                                        <input
-                                            value={doubtText}
-                                            onChange={e => setDoubtText(e.target.value)}
-                                            onKeyPress={e => e.key === 'Enter' && handleAskDoubt()}
-                                            placeholder="Ask a question…"
-                                            className="input-field"
-                                            style={{ flex: 1, fontSize: '0.85rem' }}
-                                        />
-                                        <button
-                                            className="btn btn-primary"
+                                     {attachedFile && (
+                                         <div style={{ 
+                                             display: 'flex', 
+                                             alignItems: 'center', 
+                                             justifyContent: 'space-between',
+                                             padding: '0.65rem 1rem', 
+                                             background: 'rgba(100,130,255,0.06)', 
+                                             border: '1px solid rgba(100,130,255,0.2)',
+                                             borderRadius: '12px',
+                                             marginBottom: '0.75rem',
+                                             fontSize: '0.8rem',
+                                             color: 'var(--primary-600)',
+                                             fontWeight: 700,
+                                             backdropFilter: 'blur(8px)'
+                                         }}>
+                                             <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                                 <span style={{ fontSize: '1.2rem' }}>🖼️</span>
+                                                 <div style={{ display: 'flex', flexDirection: 'column' }}>
+                                                     <span style={{ maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                                         {attachedFile.name}
+                                                     </span>
+                                                     <span style={{ fontSize: '0.65rem', opacity: 0.6, fontWeight: 500 }}>
+                                                         {(attachedFile.size / 1024).toFixed(1)} KB · Attached
+                                                     </span>
+                                                 </div>
+                                             </div>
+                                             <button 
+                                                 onClick={() => setAttachedFile(null)}
+                                                 style={{ 
+                                                     background: 'rgba(255,70,70,0.1)', 
+                                                     border: 'none', 
+                                                     color: 'var(--accent-red)', 
+                                                     cursor: 'pointer',
+                                                     width: '24px',
+                                                     height: '24px',
+                                                     borderRadius: '50%',
+                                                     display: 'flex',
+                                                     alignItems: 'center',
+                                                     justifyContent: 'center'
+                                                 }}
+                                                 title="Remove"
+                                             >
+                                                 ✕
+                                             </button>
+                                         </div>
+                                     )}
+                                     <div className="flex gap-sm" style={{ borderTop: '1px solid var(--glass-border)', paddingTop: '1rem' }}>
+                                         <button 
+                                            className={`btn ${isListening ? 'btn-primary pulse' : 'btn-secondary'}`}
+                                            style={{ padding: '0.6rem', position: 'relative' }}
+                                            onClick={handleVoiceInput}
+                                            title="Voice Input"
+                                         >
+                                             {isListening ? '🛑' : '🎤'}
+                                         </button>
+                                         <input
+                                             type="file"
+                                             id="doubt-file-upload"
+                                             hidden
+                                             onChange={(e) => setAttachedFile(e.target.files?.[0] || null)}
+                                             accept="image/*"
+                                         />
+                                         <button 
+                                            className="btn btn-secondary"
                                             style={{ padding: '0.6rem' }}
-                                            onClick={handleAskDoubt}
-                                            disabled={!doubtText.trim() || doubtLoading}
-                                        >
-                                            🚀
-                                        </button>
-                                    </div>
+                                            onClick={() => document.getElementById('doubt-file-upload')?.click()}
+                                            title="Attach Screenshot"
+                                         >
+                                             📎
+                                         </button>
+                                         <input
+                                             value={doubtText}
+                                             onChange={e => setDoubtText(e.target.value)}
+                                             onKeyPress={e => e.key === 'Enter' && handleAskDoubt()}
+                                             placeholder="Ask a question…"
+                                             className="input-field"
+                                             style={{ flex: 1, fontSize: '0.85rem' }}
+                                         />
+                                         <button
+                                             className="btn btn-primary"
+                                             style={{ padding: '0.6rem' }}
+                                             onClick={handleAskDoubt}
+                                             disabled={(!doubtText.trim() && !attachedFile) || doubtLoading}
+                                         >
+                                             🚀
+                                         </button>
+                                     </div>
                                 </div>
                             )}
                         </div>
